@@ -1,0 +1,258 @@
+<title>Istam zakaz kartochkasi</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  /* Qog'oz shakl (A4 yotiq) + qo'llanma. Shakl har doim oq qog'oz ko'rinishida; sahifa foni mavzuga qarab. */
+  :root {
+    --bg: #eef1ef;
+    --fg: #17201e;
+    --muted: #55625f;
+    --accent: #0f5a52;
+    --rule: #cdd6d3;
+    --paper: #ffffff;
+    --ink: #111816;
+    --line: #2b3533;
+    --tint: #e8efec;
+    --must: #b4410f;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #101716; --fg: #e3ebe8; --muted: #9aaba6; --accent: #5fc2b2; --rule: #2a3735; --must: #f0905f; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #101716; --fg: #e3ebe8; --muted: #9aaba6; --accent: #5fc2b2; --rule: #2a3735; --must: #f0905f; color-scheme: dark; }
+
+  body { background: var(--bg); color: var(--fg); font-family: var(--sans); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .intro h1 { font-size: 26px; margin: 0 0 6px; text-wrap: balance; }
+  .intro p { margin: 0; color: var(--muted); max-width: 70ch; line-height: 1.5; }
+  .scroller { overflow-x: auto; padding-bottom: 8px; }
+
+  /* ---------- Qog'oz ---------- */
+  .sheet {
+    width: 281mm; min-height: 194mm; box-sizing: border-box; background: var(--paper); color: var(--ink);
+    padding: 4.5mm 7mm; position: relative; font-size: 9.5pt; line-height: 1.2;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.08); display: flex; flex-direction: column; gap: 1.5mm;
+  }
+  /* burchak belgilari — rasmda varaqni tekislash uchun */
+  .mark { position: absolute; width: 6mm; height: 6mm; border: 0 solid var(--ink); }
+  .mark.tl { top: 2mm; left: 2mm; border-top-width: 1.2mm; border-left-width: 1.2mm; }
+  .mark.tr { top: 2mm; right: 2mm; border-top-width: 1.2mm; border-right-width: 1.2mm; }
+  .mark.bl { bottom: 2mm; left: 2mm; border-bottom-width: 1.2mm; border-left-width: 1.2mm; }
+  .mark.br { bottom: 2mm; right: 2mm; border-bottom-width: 1.2mm; border-right-width: 1.2mm; }
+
+  .head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 0.6mm solid var(--ink); padding-bottom: 1.5mm; }
+  .head .brand { font-weight: 700; font-size: 13pt; letter-spacing: .14em; }
+  .head .brand small { font-weight: 500; letter-spacing: .04em; font-size: 9pt; margin-left: 3mm; }
+  .head .ver { font-family: var(--mono); font-size: 7.5pt; color: #4a5653; }
+
+  .sec { font-weight: 700; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .08em; display: flex; gap: 2mm; align-items: baseline; }
+  .sec .hint { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 7.5pt; color: #4a5653; }
+  .must { color: var(--must); font-weight: 700; }
+  @media print { .must { color: #000; } }
+
+  table.f { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.f th, table.f td { border: 0.3mm solid var(--line); padding: 0.8mm 1.2mm; vertical-align: top; }
+  table.f th { background: var(--tint); font-weight: 600; font-size: 7.5pt; text-align: left; line-height: 1.15; }
+  table.f td.lbl { background: var(--tint); font-weight: 600; font-size: 7.5pt; }
+  table.f .cap { display: block; font-size: 6.8pt; color: #4a5653; font-weight: 500; }
+  .box { height: 7mm; }
+  td.in { height: 9.5mm; position: relative; }
+  td.in > .k { position: absolute; top: 0.6mm; left: 1.2mm; font-size: 6.8pt; font-weight: 600; color: #3a4542; white-space: nowrap; }
+  td.in > .k small { font-weight: 400; color: #6a7673; }
+  td.in > .v { position: absolute; left: 1.2mm; bottom: 1mm; }
+  .chk { display: inline-flex; align-items: center; gap: 1mm; margin-right: 2.5mm; font-size: 8pt; white-space: nowrap; }
+  .chk i { width: 3.2mm; height: 3.2mm; border: 0.3mm solid var(--ink); display: inline-block; }
+  .num { font-family: var(--mono); font-size: 7pt; color: #4a5653; text-align: center; }
+  .swatch { position: relative; }
+  .swatch::after { content: "namuna"; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 6.5pt; color: #9aa6a3; letter-spacing: .06em; }
+  .sizehead { height: 7mm; }
+  .sizehead .cap { margin-bottom: 0.5mm; }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 3mm; }
+
+  /* ---------- Qo'llanma ---------- */
+  .guide { display: grid; gap: 22px; }
+  .guide h2 { font-size: 19px; margin: 0; text-wrap: balance; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+  .card { background: color-mix(in srgb, var(--bg) 60%, var(--fg) 4%); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+  .card h3 { margin: 0 0 10px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+  .card ul, .card ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.45; }
+  .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--must) 15%, transparent); color: var(--must); }
+  .tag.opt { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  code { font-family: var(--mono); font-size: .92em; }
+  .ex { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+
+  @page { size: A4 landscape; margin: 8mm; }
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 0; max-width: none; gap: 0; display: block; }
+    .intro, .screen-only { display: none; }
+    .scroller { overflow: visible; padding: 0; }
+    .sheet { box-shadow: none; width: 281mm; min-height: 0; height: 192mm; overflow: hidden; }
+    .guide { color: #000; page-break-before: always; gap: 3mm; font-size: 8.5pt; }
+    .guide h2 { font-size: 13pt; }
+    .card { background: #fff; border-color: #999; padding: 3mm 4mm; border-radius: 2mm; break-inside: avoid; }
+    .card h3 { font-size: 10.5pt; margin-bottom: 2mm; }
+    .card ul, .card ol { gap: 1mm; }
+    .cols { grid-template-columns: 1fr 1fr; gap: 3mm; }
+    .tag { border: 1px solid #000; background: none; color: #000; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>Zakaz kartochkasi</h1>
+    <p>Innovatsion bo'lim zakazni shu varaqqa yozadi, namunalarni yopishtiradi va rasmini tizimga yuklaydi — sun'iy intellekt zakazni (razmer × rang, mato, furnitura) o'zi to'ldiradi. <span class="must">●</span> belgili maydonlar majburiy. Pastda — qanday to'ldirish va rasmga olish.</p>
+  </header>
+
+  <div class="scroller">
+    <section class="sheet" aria-label="Zakaz kartochkasi — chop etiladigan shakl">
+      <span class="mark tl"></span><span class="mark tr"></span><span class="mark bl"></span><span class="mark br"></span>
+
+      <div class="head">
+        <div class="brand">ISTAM <small>Zakaz kartochkasi · Innovatsion bo'lim</small></div>
+        <div class="ver">ISTAM-ZK v1 · varaq ___ / ___</div>
+      </div>
+
+      <!-- Sarlavha -->
+      <table class="f">
+        <colgroup><col style="width:12%"><col style="width:12%"><col style="width:17%"><col style="width:15%"><col style="width:20%"><col style="width:24%"></colgroup>
+        <tr>
+          <td class="in"><span class="k"><span class="must">●</span> Partiya №</span></td>
+          <td class="in"><span class="k"><span class="must">●</span> Sana <small>kun.oy.yil</small></span></td>
+          <td class="in"><span class="k"><span class="must">●</span> Tovar nomi <small>Rubashka, Dvoyka…</small></span></td>
+          <td class="in"><span class="k"><span class="must">●</span> Model</span></td>
+          <td class="in"><span class="k">Artikul</span></td>
+          <td class="in"><span class="k">Tarkibi <small>masalan: 100% viskoza</small></span></td>
+        </tr>
+        <tr>
+          <td class="in" colspan="2"><span class="k">Mavsum</span><span class="v"><span class="chk"><i></i>Bahor</span><span class="chk"><i></i>Yoz</span><span class="chk"><i></i>Kuz</span><span class="chk"><i></i>Qish</span></span></td>
+          <td class="in"><span class="k">Qaysi korxonaga <small>tsex / tikuvchi</small></span></td>
+          <td class="in"><span class="k">Kim zakaz berdi</span></td>
+          <td class="in"><span class="k">Muddat boshi</span></td>
+          <td class="in"><span class="k">Muddat oxiri</span></td>
+        </tr>
+      </table>
+
+      <!-- A. Ranglar × razmerlar -->
+      <div class="sec">A. Ranglar va soni (dona) <span class="hint">har rang — bitta qator: mato bo'lagi, rang nomi, har razmer soni; razmer nomini tepaga yozing (3-6)</span></div>
+      <table class="f">
+        <colgroup><col style="width:3.5%"><col style="width:11%"><col style="width:15%"><col style="width:8%"><col style="width:11.5%"><col style="width:11.5%"><col style="width:11.5%"><col style="width:11.5%"><col style="width:16.5%"></colgroup>
+        <tr>
+          <th>№</th>
+          <th>Mato namunasi</th>
+          <th><span class="must">●</span> Rang nomi</th>
+          <th>Rang kodi</th>
+          <th class="sizehead"><span class="cap"><span class="must">●</span> Razmer:</span></th>
+          <th class="sizehead"><span class="cap">Razmer:</span></th>
+          <th class="sizehead"><span class="cap">Razmer:</span></th>
+          <th class="sizehead"><span class="cap">Razmer:</span></th>
+          <th>Jami (dona)</th>
+        </tr>
+        <tr style="height:11mm"><td class="num">1</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr style="height:11mm"><td class="num">2</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr style="height:11mm"><td class="num">3</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr style="height:11mm"><td class="num">4</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr style="height:7.5mm">
+          <td colspan="4" class="lbl"><span class="must">●</span> Mato sarfi — 1 donaga, metr <span class="cap">har razmer ostiga; hammasi bir xil bo'lsa bittasiga yozing</span></td>
+          <td></td><td></td><td></td><td></td><td class="lbl">Jami metr:</td>
+        </tr>
+      </table>
+
+      <!-- B. Mato -->
+      <div class="sec">B. Asosiy mato <span class="hint">mato kartasidagi kod va postavshik; ranglar A jadvalidan</span></div>
+      <table class="f">
+        <colgroup><col style="width:22%"><col style="width:16%"><col style="width:12%"><col style="width:28%"><col style="width:10%"><col style="width:12%"></colgroup>
+        <tr>
+          <td class="in"><span class="k"><span class="must">●</span> Postavshik</span></td>
+          <td class="in"><span class="k"><span class="must">●</span> Mato kodi</span></td>
+          <td class="in"><span class="k">Narx (1 metr)</span></td>
+          <td class="in"><span class="k">Valyuta</span><span class="v"><span class="chk"><i></i>So'm</span><span class="chk"><i></i>$</span><span class="chk"><i></i>Yuan</span><span class="chk"><i></i>Yevro</span><span class="chk"><i></i>Rubl</span></span></td>
+          <td class="in"><span class="k">Eni (sm)</span></td>
+          <td class="in"><span class="k">Gramaj (g/m²)</span></td>
+        </tr>
+      </table>
+
+      <!-- C. Furnitura -->
+      <div class="sec">C. Furnitura va qadoq — 1 dona mahsulot uchun <span class="hint">tugma, shevron, etiketka, zamok, salafan…; ayrim ranglarga bo'lsa — A jadvalidagi rang №</span></div>
+      <table class="f">
+        <colgroup><col style="width:3.5%"><col style="width:9%"><col style="width:14%"><col style="width:10%"><col style="width:9%"><col style="width:8%"><col style="width:8.5%"><col style="width:8%"><col style="width:7%"><col style="width:12%"><col style="width:11%"></colgroup>
+        <tr>
+          <th>№</th>
+          <th>Namuna</th>
+          <th><span class="must">●</span> Nomi</th>
+          <th>Kodi</th>
+          <th>Rangi</th>
+          <th>O'lchami <span class="cap">16, 20/31…</span></th>
+          <th><span class="must">●</span> 1 donaga nechta</th>
+          <th>Narx</th>
+          <th>Valyuta</th>
+          <th>Postavshik</th>
+          <th>Qaysi ranglarga <span class="cap">□ hammasi yoki №</span></th>
+        </tr>
+        <tr style="height:7mm"><td class="num">1</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td><span class="chk"><i></i>hammasi</span></td></tr>
+        <tr style="height:7mm"><td class="num">2</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td><span class="chk"><i></i>hammasi</span></td></tr>
+        <tr style="height:7mm"><td class="num">3</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td><span class="chk"><i></i>hammasi</span></td></tr>
+        <tr style="height:7mm"><td class="num">4</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td><span class="chk"><i></i>hammasi</span></td></tr>
+        <tr style="height:7mm"><td class="num">5</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td><span class="chk"><i></i>hammasi</span></td></tr>
+        <tr style="height:7mm"><td class="num">6</td><td class="swatch"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td><span class="chk"><i></i>hammasi</span></td></tr>
+      </table>
+
+      <!-- D. Ish narxi va imzo -->
+      <table class="f">
+        <colgroup><col style="width:9%"><col style="width:13%"><col style="width:9%"><col style="width:22%"><col style="width:9%"><col style="width:12%"><col style="width:12%"><col style="width:14%"></colgroup>
+        <tr style="height:8mm">
+          <td class="lbl">Kroy narxi<span class="cap">1 dona, so'm</span></td><td></td>
+          <td class="lbl">Tikuv narxi<span class="cap">1 dona, so'm</span></td><td></td>
+          <td class="lbl">Boshqa ish<span class="cap">nomi, narxi</span></td><td></td>
+          <td class="lbl">To'ldirdi<span class="cap">ism, imzo</span></td><td></td>
+        </tr>
+      </table>
+    </section>
+  </div>
+
+  <section class="guide" aria-label="Qanday to'ldiriladi">
+    <h2>Qanday to'ldiriladi</h2>
+    <div class="cols">
+      <div class="card">
+        <h3><span class="tag">Majburiy</span> AI shulardan zakaz tuzadi</h3>
+        <ul>
+          <li>Partiya №, sana, tovar nomi, model</li>
+          <li><b>A:</b> razmer nomlari va har rang uchun rang nomi + har razmerdagi soni</li>
+          <li><b>A:</b> 1 donaga mato sarfi (metr) — har razmer ostiga</li>
+          <li><b>B:</b> mato postavshigi va kodi</li>
+          <li><b>C:</b> har furnituraning nomi va 1 donaga nechtaligi</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="tag opt">Ixtiyoriy</span> bo'sh qolsa, tizim o'zi qo'yadi</h3>
+        <ul>
+          <li>Narxlar, valyuta, kodlar, postavshik — shu modelning <b>oldingi zakazidan</b> yoki ma'lumotnomadan</li>
+          <li>Kroy va tikuv narxi, korxona — oldingi zakazdan</li>
+          <li>Artikul, mavsum, muddat, kim berdi, tarkibi</li>
+          <li>Rang kodi — mato kartasidagi raqam (bo'lsa yozing)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Yozish qoidalari</h3>
+        <ol>
+          <li>Bitta katakka — bitta qiymat. Raqamlarni aniq, bosma harfga yaqin yozing.</li>
+          <li>Kasr — vergul bilan: <span class="ex">0,58</span>. Ming ajratmasiz: <span class="ex">1295,8</span>.</li>
+          <li>Rang va razmer nomini tizimdagidek: <span class="ex">Sini-oq</span>, <span class="ex">3-6</span>.</li>
+          <li>Namunani o'z katagiga yopishtiring — yozuvni yopmasin.</li>
+          <li>4 tadan ko'p rang yoki 6 tadan ko'p furnitura bo'lsa — ikkinchi varaq ("varaq 2/2").</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>Rasmga olish</h3>
+        <ul>
+          <li>Varaq to'liq, to'rtta qora burchak ham ko'rinsin</li>
+          <li>Tepadan, tik, yorug' joyda, soyasiz va xira bo'lmasin</li>
+          <li>Har varaq — alohida rasm; postavshik nakladnoyi — alohida rasm</li>
+          <li>Tizimda: Zakaz → <b>"Rasmdan to'ldirish"</b> → natijani tekshirib "Qo'llash"</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
