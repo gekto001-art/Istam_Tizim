@@ -43,7 +43,10 @@ export type Action =
   | 'purchase.write' // buyurtma yaratish, nakladnoy kiritish, bekor qilish
   | 'purchase.approve' // postavshik kelishuvini tasdiqlash / rad etish
   | 'stock.read' // xomashyo skladi: qoldiq, prixod, rasxod, sotuv jurnali
-  | 'stock.write'; // sklad hujjatlarini kiritish va o'chirish
+  | 'stock.write' // sklad hujjatlarini kiritish va o'chirish
+  | 'kroy.read' // bichuv: kroy, OTK, yarim tayyor
+  | 'kroy.write' // kroy kiritish, brakni saralash, kroydan rasxod, zakazni kroyda yopish
+  | 'otk.write'; // sifat nazorati (OTK Bichuv)
 
 const MATRIX: Record<Action, Role[]> = {
   'users.manage': ['admin'],
@@ -59,6 +62,9 @@ const MATRIX: Record<Action, Role[]> = {
   'purchase.approve': ['admin', 'rahbar', 'taminot'],
   'stock.read': ['admin', 'rahbar', 'sklad', 'taminot', 'innovatsiya', 'bichuv', 'buxgalter'],
   'stock.write': ['admin', 'sklad'],
+  'kroy.read': ['admin', 'rahbar', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'tsex', 'buxgalter'],
+  'kroy.write': ['admin', 'bichuv'],
+  'otk.write': ['admin', 'otk'],
 };
 
 export function can(role: Role, action: Action): boolean {

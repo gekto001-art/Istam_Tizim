@@ -13,6 +13,7 @@ import { catalogRouter } from './routes/catalog.js';
 import { ordersRouter } from './routes/orders.js';
 import { purchasesRouter } from './routes/purchases.js';
 import { stockRouter } from './routes/stock.js';
+import { kroyRouter } from './routes/kroy.js';
 import { usersRouter } from './routes/users.js';
 
 export function createApp() {
@@ -37,6 +38,7 @@ export function createApp() {
   api.use('/orders', requireAuth, ordersRouter);
   api.use('/purchases', requireAuth, purchasesRouter);
   api.use('/stock', requireAuth, stockRouter);
+  api.use('/kroy', requireAuth, kroyRouter);
   api.use('/', requireAuth, catalogRouter); // /colors, /sizes, /materials ...
   app.use('/api', api);
 

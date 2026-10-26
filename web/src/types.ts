@@ -56,6 +56,9 @@ export const can = {
   purchaseApprove: has(['admin', 'rahbar', 'taminot']),
   stockRead: has(['admin', 'rahbar', 'sklad', 'taminot', 'innovatsiya', 'bichuv', 'buxgalter']),
   stockWrite: has(['admin', 'sklad']),
+  kroyRead: has(['admin', 'rahbar', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'tsex', 'buxgalter']),
+  kroyWrite: has(['admin', 'bichuv']),
+  otkWrite: has(['admin', 'otk']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -402,4 +405,90 @@ export interface StockExpense {
   rate: string;
   amount_uzs: string;
   partiya_no: string | null;
+}
+
+// ---------- Bichuv (kroy) va sifat nazorati ----------
+export interface KroyOrderHead {
+  id: number;
+  partiya_no: string;
+  status: string;
+  artikul: string | null;
+  model: string | null;
+  kroy_closed_at: string | null;
+  kroy_close_note: string | null;
+  product_type_name: string;
+  producer_id: number | null;
+  producer_name: string | null;
+}
+export interface KroyCell { color_id: number; color_name: string; size_id: number; size_name: string; plan_qty: number; cut_qty: number }
+export interface KroyMaterial extends StockItem { received: string; used: string; left_qty: string }
+export interface KroyOrder {
+  order: KroyOrderHead;
+  cells: KroyCell[];
+  materials: KroyMaterial[];
+}
+/** Kroy TM: kesilgan yozuv (ID), OTK va brak saralash natijasi */
+export interface KroyItem {
+  id: number;
+  cut_id: number;
+  cut_date: string;
+  created_at: string;
+  is_recut: boolean;
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  artikul: string | null;
+  model: string | null;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  plan_qty: number;
+  fact_qty: number;
+  otk_date: string | null;
+  otk_first: number | null;
+  otk_brak: number | null;
+  otk_by_name: string | null;
+  created_by_name: string | null;
+  sort_date: string | null;
+  sort1: number | null;
+  sort2: number | null;
+  scrap: number | null;
+  scrap_cost_uzs: string | null;
+  unit_cost: string | null;
+}
+export interface SemiRow {
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  otk_first: number;
+  sort1: number;
+  sort2: number;
+  total: number;
+  issued: number;
+  accepted: number;
+  left_qty: number;
+}
+export interface KroyIssue {
+  id: number;
+  issue_no: string;
+  issue_date: string;
+  created_at: string;
+  order_id: number;
+  partiya_no: string;
+  producer_id: number;
+  producer_name: string;
+  color_name: string;
+  size_name: string;
+  qty: number;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_by_name: string | null;
+}
+export interface KroyClosed {
+  closed: KroyOrderHead[];
+  minus: (KroyMaterial & { order_id: number; partiya_no: string; kroy_closed_at: string | null })[];
 }

@@ -14,6 +14,8 @@ import { TrackingPage } from './pages/Tracking';
 import { PrixodPage, PrixodTaminotPage } from './pages/StockIn';
 import { RasxodPage, SotuvPage, ZayavkaPage } from './pages/StockOut';
 import { NakladnoyPage, OstatkaPage } from './pages/StockReports';
+import { KroyPage } from './pages/Kroy';
+import { BrakPage, KroyClosedPage, KroyRasxodPage, OtkPage, SemiPage } from './pages/KroyOtk';
 
 interface NavItem {
   to: string;
@@ -43,7 +45,18 @@ const NAV: [string, NavItem[]][] = [
       { to: '/stock/nakladnoy', label: 'Nakladnoy', show: (r) => can.stockRead(r) },
     ],
   ],
-  ['Ma\'lumotnomalar',[{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
+  [
+    'Bichuv (kroy)',
+    [
+      { to: '/kroy', label: 'Kroy', show: (r) => can.kroyRead(r) },
+      { to: '/kroy/otk', label: 'Sifat nazorati', show: (r) => can.kroyRead(r) },
+      { to: '/kroy/brak', label: 'OTK Brak', show: (r) => can.kroyRead(r) },
+      { to: '/kroy/yarim-tayyor', label: 'Kroyda yarim tayyor', show: (r) => can.kroyRead(r) },
+      { to: '/kroy/rasxod', label: 'Kroydan rasxod', show: (r) => can.kroyRead(r) },
+      { to: '/kroy/yopilgan', label: 'Yopilgan zakazlar', show: (r) => can.kroyRead(r) },
+    ],
+  ],
+  ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
   [
     'Tizim',
     [
@@ -71,7 +84,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               <div key={group} style={{ display: 'contents' }}>
                 <div className="ng">{group}</div>
                 {vis.map((i) => (
-                  <NavLink key={i.to} className="nav" to={i.to} end={i.to === '/'}>
+                  <NavLink key={i.to} className="nav" to={i.to} end={i.to === '/' || i.to === '/kroy'}>
                     {i.label}
                   </NavLink>
                 ))}
@@ -117,6 +130,12 @@ export function App() {
         {can.stockRead(me.role) && <Route path="/stock/sotuv" element={<SotuvPage />} />}
         {can.stockRead(me.role) && <Route path="/stock/ostatka" element={<OstatkaPage />} />}
         {can.stockRead(me.role) && <Route path="/stock/nakladnoy" element={<NakladnoyPage />} />}
+        {can.kroyRead(me.role) && <Route path="/kroy" element={<KroyPage />} />}
+        {can.kroyRead(me.role) && <Route path="/kroy/otk" element={<OtkPage />} />}
+        {can.kroyRead(me.role) && <Route path="/kroy/brak" element={<BrakPage />} />}
+        {can.kroyRead(me.role) && <Route path="/kroy/yarim-tayyor" element={<SemiPage />} />}
+        {can.kroyRead(me.role) && <Route path="/kroy/rasxod" element={<KroyRasxodPage />} />}
+        {can.kroyRead(me.role) && <Route path="/kroy/yopilgan" element={<KroyClosedPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

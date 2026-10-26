@@ -30,7 +30,7 @@ const itemSchema = {
   color_code: optText(50),
   material_size: optText(50),
 };
-interface Item {
+export interface Item {
   material_id: number;
   material_color_id: number | null;
   color_code: string | null;
@@ -64,7 +64,7 @@ async function rateOf(db: Db, currency: string, rate: number | null | undefined,
 }
 
 /** Xomashyo qoldig'i va o'rtacha tannarxi (so'mda) */
-async function itemState(db: Db, i: Item) {
+export async function itemState(db: Db, i: Item) {
   const r = (
     await db.query(
       `SELECT coalesce(sum(x.dir * x.qty), 0) AS qty,
