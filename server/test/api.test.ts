@@ -17,7 +17,7 @@ describe('Kirish', () => {
 
   it('admin kiradi, profil va rol nomi qaytadi', async () => {
     const a = await admin();
-    expect(a.user).toMatchObject({ login: 'admin', role: 'admin', role_label: 'Admin', must_change_password: false });
+    expect(a.user).toMatchObject({ login: 'admin', role: 'admin', role_label: 'Admin', must_change_password: true });
     const me = await api().get('/api/auth/me').set(auth(a.token));
     expect(me.body.full_name).toBe('Administrator');
   });

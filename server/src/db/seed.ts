@@ -1,6 +1,7 @@
 /**
  * Boshlang'ich ma'lumot: birinchi admin (ADMIN_LOGIN / ADMIN_PASSWORD).
  * Admin bor bo'lsa hech narsa qilmaydi — har ishga tushishda xavfsiz chaqiriladi.
+ * Birinchi kirishda admin parolni almashtiradi (boshlang'ich parol .env faylida qoladi).
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,7 @@ export async function seed({ log = console.log } = {}) {
     const password = process.env.ADMIN_PASSWORD;
     if (!password || password.length < 8) throw new Error('ADMIN_PASSWORD (kamida 8 belgi) ni .env da bering');
     await client.query(
-      `INSERT INTO users (login, password_hash, full_name, role, must_change_password) VALUES ($1, $2, 'Administrator', 'admin', false)`,
+      `INSERT INTO users (login, password_hash, full_name, role, must_change_password) VALUES ($1, $2, 'Administrator', 'admin', true)`,
       [login, await bcrypt.hash(password, 10)],
     );
     log(`✓ Admin yaratildi: ${login}`);
