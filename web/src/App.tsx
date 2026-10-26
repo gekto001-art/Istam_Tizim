@@ -16,6 +16,7 @@ import { RasxodPage, SotuvPage, ZayavkaPage } from './pages/StockOut';
 import { NakladnoyPage, OstatkaPage } from './pages/StockReports';
 import { KroyPage } from './pages/Kroy';
 import { BrakPage, KroyClosedPage, KroyRasxodPage, OtkPage, SemiPage } from './pages/KroyOtk';
+import { TsexOstatkaPage, TsexPrixodPage, TsexProductionPage, TsexXaPage } from './pages/Tsex';
 
 interface NavItem {
   to: string;
@@ -56,6 +57,15 @@ const NAV: [string, NavItem[]][] = [
       { to: '/kroy/yopilgan', label: 'Yopilgan zakazlar', show: (r) => can.kroyRead(r) },
     ],
   ],
+  [
+    'Tsex (ishlab chiqarish)',
+    [
+      { to: '/tsex/prixod', label: 'Prixod (kroydan)', show: (r) => can.tsexRead(r) },
+      { to: '/tsex', label: 'Ishlab chiqarish', show: (r) => can.tsexRead(r) },
+      { to: '/tsex/ostatka', label: 'Ostatka', show: (r) => can.tsexRead(r) },
+      { to: '/tsex/xa', label: 'Ish/Chiq Xa', show: (r) => can.tsexRead(r) },
+    ],
+  ],
   ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
   [
     'Tizim',
@@ -84,7 +94,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               <div key={group} style={{ display: 'contents' }}>
                 <div className="ng">{group}</div>
                 {vis.map((i) => (
-                  <NavLink key={i.to} className="nav" to={i.to} end={i.to === '/' || i.to === '/kroy'}>
+                  <NavLink key={i.to} className="nav" to={i.to} end={['/', '/kroy', '/tsex'].includes(i.to)}>
                     {i.label}
                   </NavLink>
                 ))}
@@ -136,6 +146,10 @@ export function App() {
         {can.kroyRead(me.role) && <Route path="/kroy/yarim-tayyor" element={<SemiPage />} />}
         {can.kroyRead(me.role) && <Route path="/kroy/rasxod" element={<KroyRasxodPage />} />}
         {can.kroyRead(me.role) && <Route path="/kroy/yopilgan" element={<KroyClosedPage />} />}
+        {can.tsexRead(me.role) && <Route path="/tsex" element={<TsexProductionPage />} />}
+        {can.tsexRead(me.role) && <Route path="/tsex/prixod" element={<TsexPrixodPage />} />}
+        {can.tsexRead(me.role) && <Route path="/tsex/ostatka" element={<TsexOstatkaPage />} />}
+        {can.tsexRead(me.role) && <Route path="/tsex/xa" element={<TsexXaPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

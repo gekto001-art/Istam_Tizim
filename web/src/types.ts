@@ -59,6 +59,8 @@ export const can = {
   kroyRead: has(['admin', 'rahbar', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'tsex', 'buxgalter']),
   kroyWrite: has(['admin', 'bichuv']),
   otkWrite: has(['admin', 'otk']),
+  tsexRead: has(['admin', 'rahbar', 'tsex', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'buxgalter']),
+  tsexWrite: has(['admin', 'tsex']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -491,4 +493,101 @@ export interface KroyIssue {
 export interface KroyClosed {
   closed: KroyOrderHead[];
   minus: (KroyMaterial & { order_id: number; partiya_no: string; kroy_closed_at: string | null })[];
+}
+
+// ---------- Tsex (ishlab chiqarish) ----------
+export interface TsexIssue {
+  id: number;
+  issue_no: string;
+  issue_date: string;
+  created_at: string;
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  artikul: string | null;
+  model: string | null;
+  producer_id: number;
+  producer_name: string;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  qty: number;
+  status: 'pending' | 'accepted' | 'rejected';
+  decided_date: string | null;
+  decided_by_name: string | null;
+  created_by_name: string | null;
+}
+export interface TsexBalance {
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  producer_id: number;
+  producer_name: string;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  received: number;
+  pending: number;
+  produced: number;
+  left_qty: number;
+}
+export interface TsexNorm {
+  color_id: number;
+  size_id: number | null;
+  material_id: number;
+  material_name: string;
+  material_code: string | null;
+  unit: string;
+  material_color_id: number | null;
+  material_color_name: string | null;
+  color_code: string | null;
+  material_size: string | null;
+  per_unit: string;
+}
+export interface TsexPlan {
+  order: { id: number; partiya_no: string; artikul: string | null; model: string | null; product_type_name: string };
+  cells: TsexBalance[];
+  norms: TsexNorm[];
+  materials: { material_id: number; material_color_id: number | null; color_code: string | null; material_size: string | null; received: string; used: string; left_qty: string }[];
+  issue_nos: { issue_no: string; cells: string[] }[];
+}
+export interface TsexOutput {
+  id: number;
+  doc_id: number;
+  out_date: string;
+  created_at: string;
+  issue_no: string | null;
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  producer_id: number;
+  producer_name: string;
+  color_name: string;
+  size_name: string;
+  need_qty: number;
+  fact_qty: number;
+  materials_cost: string | null;
+  created_by_name: string | null;
+}
+export interface TsexMaterial {
+  id: number;
+  doc_id: number;
+  out_date: string;
+  created_at: string;
+  partiya_no: string;
+  producer_name: string;
+  material_name: string;
+  material_code: string | null;
+  unit: string;
+  material_color_name: string | null;
+  color_code: string | null;
+  material_size: string | null;
+  per_unit: string;
+  color_name: string;
+  size_name: string;
+  fact_qty: number;
+  qty: string;
+  cost_uzs: string;
 }

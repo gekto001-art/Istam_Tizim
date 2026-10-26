@@ -595,7 +595,7 @@ export function KroyRasxodPage() {
             </table>
           </div>
         )}
-        <p className="note" style={{ marginTop: 8 }}>Munosabatni (tasdiqlash / rad etish) ishlab chiqarish bo'limi beradi — keyingi etapda.</p>
+        <p className="note" style={{ marginTop: 8 }}>Munosabatni (tasdiqlash / rad etish) tsex «Prixod (kroydan)» sahifasida beradi; rad etilgani kroyga qaytadi.</p>
       </div>
     </>
   );
