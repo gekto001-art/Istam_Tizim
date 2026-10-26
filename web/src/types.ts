@@ -51,6 +51,9 @@ export const can = {
   ordersWrite: has(['admin', 'innovatsiya']),
   ordersConfirm: has(['admin', 'innovatsiya']),
   ordersReopen: has(['admin', 'rahbar']),
+  purchaseRead: has(['admin', 'rahbar', 'taminot', 'innovatsiya', 'buxgalter', 'sklad']),
+  purchaseWrite: has(['admin', 'taminot']),
+  purchaseApprove: has(['admin', 'rahbar', 'taminot']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -122,6 +125,7 @@ export interface OrderMaterial {
   currency: string;
   rate: string;
   from_us: boolean;
+  is_main: boolean;
   note: string | null;
   product_qty: number;
   total_qty: string;
@@ -142,6 +146,7 @@ export interface OrderNeed {
   price: string;
   currency: string;
   from_us: boolean;
+  is_main: boolean;
   total_qty: string;
   total_amount: string;
   total_uzs: string;
@@ -150,11 +155,117 @@ export interface OrderNeed {
 
 export interface OrderDetail {
   order: Order;
-  items: { size_id: number; size_name: string; color_id: number; color_name: string; qty: number }[];
+  items: { size_id: number; size_name: string; color_id: number; color_name: string; qty: number; actual_qty: number | null }[];
   materials: OrderMaterial[];
   works: { id: number; producer_id: number; producer_name: string; producer_kind: string; price: string; note: string | null }[];
-  by_color: { color_id: number; color_name: string; qty: number; material_cost: string; work_cost: string; unit_cost: string; total_cost: string }[];
+  by_color: { color_id: number; color_name: string; qty: number; actual_qty: number | null; material_cost: string; work_cost: string; unit_cost: string; total_cost: string }[];
   needs: OrderNeed[];
-  totals: { qty: number; material_uzs: string; work_uzs: string };
+  totals: { qty: number; actual_qty: number | null; material_uzs: string; work_uzs: string };
   warnings: string[];
+}
+
+// ---------- Ta'minot ----------
+export type PurchaseStatus = 'negotiation' | 'rejected' | 'preparing' | 'in_transit' | 'arrived' | 'closed' | 'cancelled';
+export type PaymentStatus = 'unpaid' | 'advance' | 'partial' | 'paid';
+
+export interface SupplyOrderRow {
+  id: number;
+  partiya_no: string;
+  order_date: string;
+  artikul: string | null;
+  model: string | null;
+  product_type_name: string;
+  producer_name: string | null;
+  plan_qty: number;
+  actual_qty: number | null;
+  mato_pos: number;
+  mato_agreed: number;
+  furnitura_pos: number;
+  furnitura_agreed: number;
+}
+
+export interface SupplyNeed {
+  order_material_id: number;
+  color_id: number;
+  color_name: string;
+  material_id: number;
+  material_name: string;
+  material_code: string | null;
+  unit: string;
+  supplier_name: string | null;
+  material_color_name: string | null;
+  color_code: string | null;
+  material_size: string | null;
+  per_unit: string;
+  price: string;
+  currency: string;
+  plan_count: number;
+  actual_count: number | null;
+  qty: string | null;
+  ordered_po_id: number | null;
+}
+
+export interface SupplyPlan {
+  order: { id: number; partiya_no: string; order_date: string; status: string; artikul: string | null; model: string | null; product_type_name: string; producer_name: string | null };
+  colors: { color_id: number; color_name: string; plan_count: number; actual_count: number | null; main_material: string | null }[];
+  mato: SupplyNeed[];
+  furnitura: SupplyNeed[];
+  purchases: { id: number; stage: 'mato' | 'furnitura'; status: PurchaseStatus; payment_status: PaymentStatus; po_date: string; eta: string | null; supplier_name: string; lines: number }[];
+  can: { mato: boolean; furnitura: boolean };
+  reasons: { mato: string | null; furnitura: string | null };
+}
+
+export interface PurchaseRow {
+  id: number;
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  supplier_name: string;
+  stage: 'mato' | 'furnitura';
+  status: PurchaseStatus;
+  payment_status: PaymentStatus;
+  po_date: string;
+  eta: string | null;
+  tracking: string | null;
+  manager: string | null;
+  lines: number;
+  amount_uzs: string | null;
+}
+
+export interface PurchaseLine {
+  id: number;
+  material_id: number;
+  material_name: string;
+  material_code: string | null;
+  unit: string;
+  material_color_name: string | null;
+  color_code: string | null;
+  material_size: string | null;
+  plan_qty: string;
+  price: string;
+  currency: string;
+  rate: string;
+  fact_qty: string | null;
+  fact_price: string | null;
+  note: string | null;
+  plan_amount: string;
+  fact_amount: string | null;
+  amount_uzs: string;
+  sources: { color_name: string; plan_qty: string; per_unit: string; fact_qty: string | null; products: number | null }[];
+}
+
+export interface PurchaseDetail {
+  po: PurchaseRow & {
+    note: string | null;
+    reject_reason: string | null;
+    arrived_date: string | null;
+    supplier_country: string | null;
+    artikul: string | null;
+    model: string | null;
+    agreed_by_name: string | null;
+    agreed_at: string | null;
+    created_by_name: string | null;
+  };
+  lines: PurchaseLine[];
+  totals: { plan_uzs: string | null; fact_uzs: string | null; all_fact: boolean };
 }

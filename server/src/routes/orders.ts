@@ -49,7 +49,7 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
   if (!order) throw notFound('Zakaz');
   const items = (
     await db.query(
-      `SELECT i.size_id, s.name AS size_name, i.color_id, c.name AS color_name, i.qty
+      `SELECT i.size_id, s.name AS size_name, i.color_id, c.name AS color_name, i.qty, i.actual_qty
          FROM order_items i JOIN sizes s ON s.id = i.size_id JOIN colors c ON c.id = i.color_id
         WHERE i.order_id = $1 ORDER BY s.sort, lower(s.name), lower(c.name)`,
       [id],
@@ -87,10 +87,11 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
   // Rang bo'yicha 1 dona tannarx (reja): xomashyo + ish
   const byColor = (
     await db.query(
-      `WITH cq AS (SELECT color_id, sum(qty) AS qty FROM order_items WHERE order_id = $1 GROUP BY color_id),
+      `WITH cq AS (SELECT color_id, sum(qty) AS qty, sum(actual_qty) AS actual_qty, bool_and(actual_qty IS NOT NULL) AS has_actual
+                   FROM order_items WHERE order_id = $1 GROUP BY color_id),
             mat AS (SELECT color_id, sum(round(per_unit * price * rate, 2)) AS unit_cost FROM order_materials WHERE order_id = $1 GROUP BY color_id),
             wk AS (SELECT coalesce(sum(price), 0) AS unit_cost FROM order_works WHERE order_id = $1)
-       SELECT cq.color_id, c.name AS color_name, cq.qty,
+       SELECT cq.color_id, c.name AS color_name, cq.qty, CASE WHEN cq.has_actual THEN cq.actual_qty END AS actual_qty,
               coalesce(mat.unit_cost, 0) AS material_cost, wk.unit_cost AS work_cost,
               coalesce(mat.unit_cost, 0) + wk.unit_cost AS unit_cost,
               round(cq.qty * (coalesce(mat.unit_cost, 0) + wk.unit_cost), 2) AS total_cost
@@ -105,7 +106,7 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
       `WITH cq AS (SELECT color_id, sum(qty) AS qty FROM order_items WHERE order_id = $1 GROUP BY color_id)
        SELECT m.material_id, mt.name AS material_name, mt.code AS material_code, mt.unit,
               m.supplier_id, s.name AS supplier_name, m.material_color_id, mc.name AS material_color_name,
-              m.color_code, m.material_size, m.price, m.currency, m.rate, m.from_us,
+              m.color_code, m.material_size, m.price, m.currency, m.rate, m.from_us, m.is_main,
               round(sum(coalesce(cq.qty, 0) * m.per_unit), 3) AS total_qty,
               round(sum(coalesce(cq.qty, 0) * m.per_unit * m.price), 2) AS total_amount,
               round(sum(coalesce(cq.qty, 0) * m.per_unit * m.price * m.rate), 2) AS total_uzs,
@@ -118,14 +119,15 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
          LEFT JOIN cq ON cq.color_id = m.color_id
         WHERE m.order_id = $1
         GROUP BY m.material_id, mt.name, mt.code, mt.unit, m.supplier_id, s.name, m.material_color_id, mc.name,
-                 m.color_code, m.material_size, m.price, m.currency, m.rate, m.from_us
-        ORDER BY s.name NULLS LAST, mt.name, mc.name NULLS FIRST, m.material_size NULLS FIRST`,
+                 m.color_code, m.material_size, m.price, m.currency, m.rate, m.from_us, m.is_main
+        ORDER BY m.is_main DESC, s.name NULLS LAST, mt.name, mc.name NULLS FIRST, m.material_size NULLS FIRST`,
       [id],
     )
   ).rows;
   const totals = (
     await db.query(
       `SELECT (SELECT coalesce(sum(qty), 0) FROM order_items WHERE order_id = $1) AS qty,
+              (SELECT sum(actual_qty) FROM order_items WHERE order_id = $1 HAVING bool_and(actual_qty IS NOT NULL)) AS actual_qty,
               (SELECT coalesce(sum(round(i.qty * m.per_unit * m.price * m.rate, 2)), 0)
                  FROM order_materials m JOIN order_items i ON i.order_id = m.order_id AND i.color_id = m.color_id
                 WHERE m.order_id = $1) AS material_uzs,
@@ -143,6 +145,10 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
   const orphan = [...colorsWithMaterials].filter((c) => !colorsInMatrix.has(c));
   if (orphan.length) warnings.push('Jadvalda yo\'q rang uchun xomashyo qatorlari bor');
   if (!works.length) warnings.push('Ish narxlari (kroy, tikuv) kiritilmagan');
+  const noMain = byColor.filter((c) => colorsWithMaterials.has(c.color_id) && !materials.some((m) => m.color_id === c.color_id && m.is_main));
+  if (noMain.length) {
+    warnings.push(`Asosiy mato belgilanmagan ranglar: ${noMain.map((c) => c.color_name).join(', ')} — ularning soni fakt matoga qarab o'zgarmaydi`);
+  }
   return { order, items, materials, works, by_color: byColor, needs, totals, warnings };
 }
 
@@ -302,8 +308,21 @@ const materialBody = z.object({
   currency: CURRENCY.default('UZS'),
   rate: decimal.positive().max(1e9).nullish(),
   from_us: z.boolean().default(true),
+  is_main: z.boolean().default(false),
   note: optText(300),
 });
+
+/** Har rangda bitta asosiy mato. */
+async function assertNoOtherMain(db: Db, orderId: number, colorIds: number[], exceptId?: number) {
+  const r = (
+    await db.query(
+      `SELECT c.name FROM order_materials m JOIN colors c ON c.id = m.color_id
+        WHERE m.order_id = $1 AND m.is_main AND m.color_id = ANY($2::int[]) AND ($3::int IS NULL OR m.id <> $3)`,
+      [orderId, colorIds, exceptId ?? null],
+    )
+  ).rows.map((x) => x.name);
+  if (r.length) throw badRequest(`Bu ranglarda asosiy mato allaqachon bor: ${r.join(', ')}`);
+}
 
 /** Kurs berilmasa — zakaz sanasidagi kurs; so'm uchun 1. */
 async function resolveRate(db: Db, currency: string, rate: number | null | undefined, orderDate: string) {
@@ -330,6 +349,7 @@ ordersRouter.post('/:id/materials', async (req, res) => {
     const mat = (await db.query('SELECT id, supplier_id FROM materials WHERE id = $1', [b.material_id])).rows[0];
     if (!mat) throw notFound('Xomashyo');
     const rate = await resolveRate(db, b.currency, b.rate, o.order_date);
+    if (b.is_main) await assertNoOtherMain(db, id, colorIds);
     const created = [];
     for (const colorId of colorIds) {
       const sort = (await db.query('SELECT coalesce(max(sort), 0) + 1 AS s FROM order_materials WHERE order_id = $1 AND color_id = $2', [id, colorId]))
@@ -337,8 +357,8 @@ ordersRouter.post('/:id/materials', async (req, res) => {
       const r = (
         await db.query(
           `INSERT INTO order_materials (order_id, color_id, material_id, supplier_id, material_color_id, color_code, material_size,
-                                        per_unit, price, currency, rate, from_us, note, sort)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                                        per_unit, price, currency, rate, from_us, note, sort, is_main)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
           [
             id,
             colorId,
@@ -354,6 +374,7 @@ ordersRouter.post('/:id/materials', async (req, res) => {
             b.from_us,
             b.note,
             sort,
+            b.is_main,
           ],
         )
       ).rows[0];
@@ -379,10 +400,11 @@ ordersRouter.patch('/:id/materials/:mid', async (req, res) => {
     // valyuta o'zgarsa va kurs berilmasa — yangi valyuta kursi olinadi
     const rate = b.rate != null || b.currency !== undefined ? await resolveRate(db, currency, b.rate, o.order_date) : Number(old.rate);
     const v = { ...old, ...Object.fromEntries(Object.entries(b).filter(([, x]) => x !== undefined)), currency, rate };
+    if (v.is_main) await assertNoOtherMain(db, id, [old.color_id], mid);
     await db.query(
       `UPDATE order_materials SET material_id = $2, supplier_id = $3, material_color_id = $4, color_code = $5, material_size = $6,
-              per_unit = $7, price = $8, currency = $9, rate = $10, from_us = $11, note = $12 WHERE id = $1`,
-      [mid, v.material_id, v.supplier_id, v.material_color_id, v.color_code, v.material_size, v.per_unit, v.price, v.currency, v.rate, v.from_us, v.note],
+              per_unit = $7, price = $8, currency = $9, rate = $10, from_us = $11, note = $12, is_main = $13 WHERE id = $1`,
+      [mid, v.material_id, v.supplier_id, v.material_color_id, v.color_code, v.material_size, v.per_unit, v.price, v.currency, v.rate, v.from_us, v.note, v.is_main],
     );
     const now = (await db.query('SELECT * FROM order_materials WHERE id = $1', [mid])).rows[0];
     await audit(db, ctx, 'order', id, 'material_update', old, now);
@@ -424,12 +446,13 @@ ordersRouter.post('/:id/materials/copy', async (req, res) => {
     let n = 0;
     for (const to of targets) {
       const base = (await db.query('SELECT coalesce(max(sort), 0) AS s FROM order_materials WHERE order_id = $1 AND color_id = $2', [id, to])).rows[0].s;
+      const hasMain = !!(await db.query('SELECT 1 FROM order_materials WHERE order_id = $1 AND color_id = $2 AND is_main', [id, to])).rowCount;
       for (const [i, m] of src.entries()) {
         await db.query(
           `INSERT INTO order_materials (order_id, color_id, material_id, supplier_id, material_color_id, color_code, material_size,
-                                        per_unit, price, currency, rate, from_us, note, sort)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [id, to, m.material_id, m.supplier_id, m.material_color_id, m.color_code, m.material_size, m.per_unit, m.price, m.currency, m.rate, m.from_us, m.note, base + i + 1],
+                                        per_unit, price, currency, rate, from_us, note, sort, is_main)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [id, to, m.material_id, m.supplier_id, m.material_color_id, m.color_code, m.material_size, m.per_unit, m.price, m.currency, m.rate, m.from_us, m.note, base + i + 1, m.is_main && !hasMain],
         );
         n++;
       }
@@ -462,6 +485,12 @@ ordersRouter.put('/:id/works', async (req, res) => {
   res.json(data);
 });
 
+/** Ta'minot buyurtmasi berilgan zakazni o'zgartirib bo'lmaydi (avval buyurtmalarni bekor qilish kerak). */
+async function assertNoPurchases(db: Db, orderId: number) {
+  const n = (await db.query("SELECT count(*) AS n FROM purchase_orders WHERE order_id = $1 AND status <> 'cancelled'", [orderId])).rows[0].n;
+  if (n > 0) throw conflict(`Bu zakaz bo'yicha ${n} ta ta'minot buyurtmasi bor — avval ularni bekor qiling`);
+}
+
 // ---------- Holat ----------
 ordersRouter.post('/:id/confirm', requireAction('orders.confirm'), async (req, res) => {
   const ctx = ctxOf(req);
@@ -486,6 +515,7 @@ ordersRouter.post('/:id/reopen', requireAction('orders.reopen'), async (req, res
   const data = await tx(async (db) => {
     const o = await orderOf(db, id, true);
     if (o.status === 'draft') throw conflict('Zakaz allaqachon qoralama');
+    await assertNoPurchases(db, id);
     await db.query(`UPDATE orders SET status = 'draft', confirmed_by = NULL, confirmed_at = NULL WHERE id = $1`, [id]);
     await audit(db, ctx, 'order', id, 'reopen', { status: o.status }, { status: 'draft' });
     return orderDetail(db, id);
@@ -499,6 +529,7 @@ ordersRouter.post('/:id/cancel', requireAction('orders.reopen'), async (req, res
   const data = await tx(async (db) => {
     const o = await orderOf(db, id, true);
     if (o.status === 'cancelled') throw conflict('Zakaz allaqachon bekor qilingan');
+    await assertNoPurchases(db, id);
     await db.query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [id]);
     await audit(db, ctx, 'order', id, 'cancel', { status: o.status }, { status: 'cancelled' });
     return orderDetail(db, id);

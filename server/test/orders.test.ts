@@ -80,7 +80,7 @@ describe('Zakaz (partiya): Sheets\'dagi 29-partiya bilan bir xil hisob', () => {
     // mato: har rang o'z rangidagi mato bilan (Xitoy, yuan)
     for (const c of ['Sini-oq', 'Qora-siniy', 'Seriy']) {
       const r = await addMat(innov, id, {
-        color_ids: colors(c), material_id: ids.mat.mato, material_color_id: ids.color[c], color_code: '6', per_unit: 0.58, price: 14.5, currency: 'CNY',
+        color_ids: colors(c), material_id: ids.mat.mato, material_color_id: ids.color[c], color_code: '6', per_unit: 0.58, price: 14.5, currency: 'CNY', is_main: true,
       });
       expect(r.status).toBe(201);
     }

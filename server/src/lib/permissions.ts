@@ -38,7 +38,10 @@ export type Action =
   | 'orders.read' // zakazlarni ko'rish
   | 'orders.write' // zakaz yaratish va qoralamani tahrirlash (innovatsion bo'lim)
   | 'orders.confirm' // zakazni tasdiqlash — xomashyo ta'minotga ketadi
-  | 'orders.reopen'; // tasdiqlangan zakazni qoralamaga qaytarish yoki bekor qilish
+  | 'orders.reopen' // tasdiqlangan zakazni qoralamaga qaytarish yoki bekor qilish
+  | 'purchase.read' // ta'minot: xomashyo zakazi va postavshik buyurtmalarini ko'rish
+  | 'purchase.write' // buyurtma yaratish, nakladnoy kiritish, bekor qilish
+  | 'purchase.approve'; // postavshik kelishuvini tasdiqlash / rad etish
 
 const MATRIX: Record<Action, Role[]> = {
   'users.manage': ['admin'],
@@ -49,6 +52,9 @@ const MATRIX: Record<Action, Role[]> = {
   'orders.write': ['admin', 'innovatsiya'],
   'orders.confirm': ['admin', 'innovatsiya'],
   'orders.reopen': ['admin', 'rahbar'],
+  'purchase.read': ['admin', 'rahbar', 'taminot', 'innovatsiya', 'buxgalter', 'sklad'],
+  'purchase.write': ['admin', 'taminot'],
+  'purchase.approve': ['admin', 'rahbar', 'taminot'],
 };
 
 export function can(role: Role, action: Action): boolean {

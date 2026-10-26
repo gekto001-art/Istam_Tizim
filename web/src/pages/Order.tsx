@@ -45,6 +45,10 @@ function MatrixCard({ d, editable, onSaved }: { d: OrderDetail; editable: boolea
     return (sa?.sort ?? 0) - (sb?.sort ?? 0) || (sa?.name ?? '').localeCompare(sb?.name ?? '');
   });
   const q = (s: number, c: number) => num(st.qty[`${s}:${c}`] ?? '') || 0;
+  // fakt mato kelgandan keyingi son (razmerlarga bo'lingan)
+  const actual = new Map(d.items.map((i) => [`${i.size_id}:${i.color_id}`, i.actual_qty]));
+  const hasActual = d.items.some((i) => i.actual_qty != null);
+  const fakt = (s: number, c: number) => actual.get(`${s}:${c}`);
   const rowSum = (s: number) => st.colors.reduce((a, c) => a + q(s, c), 0);
   const colSum = (c: number) => st.sizes.reduce((a, s) => a + q(s, c), 0);
   const total = st.sizes.reduce((a, s) => a + rowSum(s), 0);
@@ -136,7 +140,10 @@ function MatrixCard({ d, editable, onSaved }: { d: OrderDetail; editable: boolea
                           onChange={(e) => setSt({ ...st, qty: { ...st.qty, [`${s}:${c}`]: e.target.value.replace(/[^\d]/g, '') } })}
                         />
                       ) : (
-                        qtyFmt(q(s, c) || null)
+                        <>
+                          {qtyFmt(q(s, c) || null)}
+                          {fakt(s, c) != null && fakt(s, c) !== q(s, c) && <div className="fakt">fakt {qtyFmt(fakt(s, c))}</div>}
+                        </>
                       )}
                     </td>
                   ))}
@@ -161,6 +168,12 @@ function MatrixCard({ d, editable, onSaved }: { d: OrderDetail; editable: boolea
         </div>
       )}
       {dirty && editable && <p className="note">O'zgarishlar saqlanmagan.</p>}
+      {hasActual && (
+        <p className="note">
+          "fakt" — postavshik nakladnoyidagi mato bo'yicha qayta hisoblangan son (fakt ÷ sarf, yuqoriga; razmerlarga reja ulushida). Jami fakt:{' '}
+          <b>{qtyFmt(d.totals.actual_qty)}</b>
+        </p>
+      )}
     </div>
   );
 }
@@ -195,6 +208,7 @@ function MaterialModal({
     currency: line?.currency ?? 'UZS',
     rate: line && line.currency !== 'UZS' ? plain(line.rate) : '',
     from_us: line?.from_us ?? true,
+    is_main: line?.is_main ?? false,
     note: line?.note ?? '',
   });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
@@ -212,6 +226,7 @@ function MaterialModal({
         currency: f.currency,
         rate: f.currency !== 'UZS' && f.rate ? num(f.rate) : null,
         from_us: f.from_us,
+        is_main: f.is_main,
         note: f.note,
       };
       return line
@@ -328,6 +343,10 @@ function MaterialModal({
         </div>
         <label className="chk">
           <input type="checkbox" checked={f.from_us} onChange={(e) => setF({ ...f, from_us: e.target.checked })} /> Xomashyo bizdan (korxonaga biz beramiz)
+        </label>
+        <label className="chk">
+          <input type="checkbox" checked={f.is_main} onChange={(e) => setF({ ...f, is_main: e.target.checked })} /> Asosiy mato — avval shu zakaz
+          qilinadi, mahsulot soni postavshik nakladnoyidagi fakt miqdorga qarab qayta hisoblanadi (har rangda bitta)
         </label>
         <Field label="Izoh">
           <input value={f.note} onChange={set('note')} maxLength={300} />
@@ -453,6 +472,7 @@ function MaterialsCard({ d, editable, onSaved }: { d: OrderDetail; editable: boo
                   <td>
                     <b>{m.material_name}</b>
                     {m.material_code && <div className="note mono">{m.material_code}</div>}
+                    {m.is_main && <span className="pill good">asosiy mato</span>}
                     {!m.from_us && <span className="pill muted">korxonadan</span>}
                   </td>
                   <td>{m.supplier_name ?? '—'}</td>
@@ -587,6 +607,7 @@ function SummaryCard({ d }: { d: OrderDetail }) {
         <div className="card stat">
           <span className="note">Jami mahsulot</span>
           <b>{qtyFmt(d.totals.qty)} dona</b>
+          {d.totals.actual_qty != null && <span className="note">fakt (matoga qarab): {qtyFmt(d.totals.actual_qty)}</span>}
         </div>
         <div className="card stat">
           <span className="note">Xomashyo (reja)</span>
@@ -611,6 +632,7 @@ function SummaryCard({ d }: { d: OrderDetail }) {
                 <tr>
                   <th>Rang</th>
                   <th className="n">Soni</th>
+                  <th className="n">Fakt soni</th>
                   <th className="n">Xomashyo</th>
                   <th className="n">Ish</th>
                   <th className="n">Tannarx</th>
@@ -622,6 +644,7 @@ function SummaryCard({ d }: { d: OrderDetail }) {
                   <tr key={c.color_id}>
                     <td>{c.color_name}</td>
                     <td className="n">{qtyFmt(c.qty)}</td>
+                    <td className="n">{c.actual_qty == null ? '—' : qtyFmt(c.actual_qty)}</td>
                     <td className="n">{money(c.material_cost)}</td>
                     <td className="n">{money(c.work_cost)}</td>
                     <td className="n">

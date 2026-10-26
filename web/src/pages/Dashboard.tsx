@@ -7,7 +7,8 @@ type Stage = 'ready' | 'next' | 'plan';
 const MODULES: { name: string; what: string; stage: Stage }[] = [
   { name: 'Asos', what: 'Kirish, rollar, foydalanuvchilar, audit, zaxira nusxa', stage: 'ready' },
   { name: 'Innovatsion bo\'lim', what: 'Zakaz (partiya): razmer × rang, rang bo\'yicha xomashyo normasi, ish narxlari, tannarx', stage: 'ready' },
-  { name: 'Zakaz & Tracking', what: 'Xomashyo zakazi, postavshik kelishuvi, status va yo\'lga chiqish', stage: 'next' },
+  { name: 'Ta\'minot: zakaz va kelishuv', what: 'Avval mato → nakladnoy (fakt) → son qayta hisob → furnitura zakazi', stage: 'ready' },
+  { name: 'Tracking', what: 'Buyurtma va to\'lov statusi, ETA, yo\'lga chiqish va qoldiq', stage: 'next' },
   { name: 'Xomashyo skladi', what: 'Prixod, bichuvga peremesheniya, vozvrat', stage: 'plan' },
   { name: 'Bichuv (kroy)', what: 'Bichish, tsexga peremesheniya', stage: 'plan' },
   { name: 'Tsex', what: 'Kunlik ishlar, ishlab chiqarishni yakunlash (shim, ko\'ylak)', stage: 'plan' },
