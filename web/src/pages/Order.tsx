@@ -5,6 +5,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { ErrorText, Modal, PageHead, fmtDate, fmtDateTime, fmtNum, useToast } from '../components/ui';
 import { can, type Color, type OrderDetail, type Producer, type Size } from '../types';
+import { CopyFromOrderModal } from './CopyFromOrder';
 import { MaterialsSheet } from './MaterialsSheet';
 import { ORDER_STATUS, OrderHeaderForm, useCatalog } from './Orders';
 
@@ -369,6 +370,7 @@ export function OrderPage() {
   const key = useMemo(() => ['orders', 'detail', Number(id)], [id]);
   const q = useQuery({ queryKey: key, queryFn: () => api<OrderDetail>(`/orders/${id}`) });
   const [editHeader, setEditHeader] = useState(false);
+  const [copyFrom, setCopyFrom] = useState(false);
   const onSaved: Save = (data, msg) => {
     qc.setQueryData(key, data);
     qc.invalidateQueries({ queryKey: ['orders', 'list'] });
@@ -422,6 +424,9 @@ export function OrderPage() {
           <h2>Zakaz ma'lumotlari</h2>
           {editable && (
             <div className="row">
+              <button className="btn sm" onClick={() => setCopyFrom(true)}>
+                Oldingi zakazdan olish…
+              </button>
               <button className="btn ghost sm" onClick={() => setEditHeader(true)}>
                 Tahrirlash
               </button>
@@ -474,6 +479,22 @@ export function OrderPage() {
       <WorksCard d={d} editable={editable} onSaved={onSaved} />
       <SummaryCard d={d} />
 
+      {copyFrom && (
+        <CopyFromOrderModal
+          d={d}
+          onClose={() => setCopyFrom(false)}
+          onDone={(r) => {
+            const { copy, ...detail } = r;
+            onSaved(
+              detail,
+              `Olindi: ${copy.lines} ta xomashyo qatori, ${copy.works} ta ish narxi${copy.items ? `, ${copy.items} ta katak` : ''}${
+                copy.skipped ? ` (${copy.skipped} ta razmer qatori mos kelmadi)` : ''
+              }`,
+            );
+            setCopyFrom(false);
+          }}
+        />
+      )}
       {editHeader && (
         <Modal title="Zakaz ma'lumotlari" onClose={() => setEditHeader(false)}>
           <OrderHeaderForm

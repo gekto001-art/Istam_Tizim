@@ -333,7 +333,8 @@ async function matrixOf(db: Db, orderId: number): Promise<Matrix> {
   return (
     await db.query(
       `SELECT i.color_id, i.size_id, c.name AS color_name, s.name AS size_name
-         FROM order_items i JOIN colors c ON c.id = i.color_id JOIN sizes s ON s.id = i.size_id WHERE i.order_id = $1`,
+         FROM order_items i JOIN colors c ON c.id = i.color_id JOIN sizes s ON s.id = i.size_id WHERE i.order_id = $1
+        ORDER BY lower(c.name), s.sort, s.id`,
       [orderId],
     )
   ).rows;
@@ -576,6 +577,111 @@ ordersRouter.post('/:id/materials/copy', async (req, res) => {
     return orderDetail(db, id);
   });
   res.status(201).json(data);
+});
+
+// ---------- Oldingi zakazdan olish (bir xil model qayta tikilganda) ----------
+/**
+ * Manba zakazdan qoralamaga ko'chirish: sarlavha (tovar, artikul, model, mavsum, korxona), razmer × rang jadvali,
+ * xomashyo normasi (ranglar mosligi bilan; mato rangi yangi rangga moslashadi; kurs yangi zakaz sanasidan) va ish narxlari.
+ */
+ordersRouter.post('/:id/copy-from', async (req, res) => {
+  const ctx = ctxOf(req);
+  const id = idParam.parse(req.params.id);
+  const b = z
+    .object({
+      source_id: idParam,
+      header: z.boolean().default(false),
+      items: z.boolean().default(false),
+      materials: z.boolean().default(true),
+      works: z.boolean().default(true),
+      replace_materials: z.boolean().default(true),
+      adapt_color: z.boolean().default(true),
+      // yangi zakazdagi rang ← manbadagi qaysi rangning normasi (berilmasa — o'sha rangning o'zi)
+      color_map: z.array(z.object({ target_color_id: idParam, source_color_id: idParam.nullable() })).max(100).default([]),
+    })
+    .parse(req.body);
+  if (b.source_id === id) throw badRequest('Zakazni o\'zidan nusxalab bo\'lmaydi');
+  if (!b.header && !b.items && !b.materials && !b.works) throw badRequest('Nimani olishni belgilang');
+  const data = await tx(async (db) => {
+    const o = await orderOf(db, id, true);
+    assertDraft(ctx, o);
+    const src = await orderOf(db, b.source_id);
+    const result = { lines: 0, skipped: 0, works: 0, items: 0 };
+
+    if (b.header) {
+      await db.query(
+        `UPDATE orders SET product_type_id = $2, artikul = $3, model = $4, season = $5, producer_id = $6, ordered_by = $7, unit = $8 WHERE id = $1`,
+        [id, src.product_type_id, src.artikul, src.model, src.season, src.producer_id, src.ordered_by, src.unit],
+      );
+    }
+    if (b.materials && b.replace_materials) await db.query('DELETE FROM order_materials WHERE order_id = $1', [id]);
+    if (b.items) {
+      const left = (await db.query('SELECT count(*) AS n FROM order_materials WHERE order_id = $1', [id])).rows[0].n;
+      if (left > 0) throw conflict('Jadvalni almashtirish uchun mavjud xomashyo qatorlari ham almashtirilishi kerak');
+      await db.query('DELETE FROM order_items WHERE order_id = $1', [id]);
+      const r = await db.query(
+        'INSERT INTO order_items (order_id, size_id, color_id, qty) SELECT $1, size_id, color_id, qty FROM order_items WHERE order_id = $2',
+        [id, b.source_id],
+      );
+      result.items = r.rowCount ?? 0;
+    }
+    if (b.materials) {
+      const matrix = await matrixOf(db, id);
+      if (!matrix.length) throw badRequest('Avval razmer × rang jadvalini to\'ldiring (yoki jadvalni ham ko\'chiring)');
+      const srcLines = (await db.query('SELECT * FROM order_materials WHERE order_id = $1 ORDER BY sort, id', [b.source_id])).rows;
+      const srcColors = new Set(srcLines.map((l) => l.color_id as number));
+      const mapped = new Map(b.color_map.map((m) => [m.target_color_id, m.source_color_id]));
+      const mains = await mainsOf(db, id);
+      let sort = (await db.query('SELECT coalesce(max(sort), 0) AS s FROM order_materials WHERE order_id = $1', [id])).rows[0].s;
+      const rateCache = new Map<string, number | null>();
+      const rateOf = async (cur: string) => {
+        if (cur === 'UZS') return 1;
+        if (!rateCache.has(cur)) {
+          const r = (await db.query('SELECT rate_at($1, $2::date) AS r', [cur, o.order_date])).rows[0].r;
+          rateCache.set(cur, r == null ? null : Number(r));
+        }
+        return rateCache.get(cur);
+      };
+      for (const tc of [...new Set(matrix.map((m) => m.color_id))]) {
+        const sc = mapped.has(tc) ? mapped.get(tc) : srcColors.has(tc) ? tc : null;
+        if (sc == null) continue;
+        for (const l of srcLines.filter((x) => x.color_id === sc)) {
+          // razmerga bog'langan qator — faqat yangi zakazda shu rangda shu razmer bo'lsa
+          if (l.size_id != null && !matrix.some((m) => m.color_id === tc && m.size_id === l.size_id)) {
+            result.skipped++;
+            continue;
+          }
+          const v = { color_id: tc, size_id: l.size_id as number | null };
+          let main = !!l.is_main;
+          if (main) {
+            try {
+              assertMainUnique(matrix, [...mains, v]);
+              mains.push(v);
+            } catch {
+              main = false;
+            }
+          }
+          const materialColor = b.adapt_color && l.material_color_id === sc ? tc : l.material_color_id;
+          await db.query(INSERT_LINE, [
+            id, tc, l.size_id, l.material_id, l.supplier_id, materialColor, l.color_code, l.material_size,
+            l.per_unit, l.price, l.currency, (await rateOf(l.currency)) ?? l.rate, l.from_us, l.note, ++sort, main,
+          ]);
+          result.lines++;
+        }
+      }
+    }
+    if (b.works) {
+      await db.query('DELETE FROM order_works WHERE order_id = $1', [id]);
+      const r = await db.query(
+        'INSERT INTO order_works (order_id, producer_id, price, note) SELECT $1, producer_id, price, note FROM order_works WHERE order_id = $2',
+        [id, b.source_id],
+      );
+      result.works = r.rowCount ?? 0;
+    }
+    await audit(db, ctx, 'order', id, 'copy_from', undefined, { source_id: b.source_id, partiya_no: src.partiya_no, ...result });
+    return { ...(await orderDetail(db, id)), copy: result };
+  });
+  res.json(data);
 });
 
 // ---------- Ish narxlari (to'liq almashtiriladi) ----------
