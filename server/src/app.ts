@@ -9,6 +9,8 @@ import { authRouter } from './auth/routes.js';
 import { pool } from './db/pool.js';
 import { AppError, errorHandler } from './lib/errors.js';
 import { auditRouter } from './routes/audit.js';
+import { catalogRouter } from './routes/catalog.js';
+import { ordersRouter } from './routes/orders.js';
 import { usersRouter } from './routes/users.js';
 
 export function createApp() {
@@ -30,6 +32,8 @@ export function createApp() {
   api.use('/auth', authRouter);
   api.use('/users', requireAuth, usersRouter);
   api.use('/audit', requireAuth, auditRouter);
+  api.use('/orders', requireAuth, ordersRouter);
+  api.use('/', requireAuth, catalogRouter); // /colors, /sizes, /materials ...
   app.use('/api', api);
 
   app.use('/api', (_req, _res, next) => next(new AppError(404, 'NOT_FOUND', 'Bunday API yo\'q')));

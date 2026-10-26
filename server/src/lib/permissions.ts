@@ -32,11 +32,23 @@ export const ROLE_LABELS: Record<Role, string> = {
 /** Har bir modul qo'shilganda shu yerga amal va unga ruxsatli rollar yoziladi (frontenddagi `can` bilan bir xil). */
 export type Action =
   | 'users.manage' // foydalanuvchilar va rollar
-  | 'audit.read';
+  | 'audit.read'
+  | 'catalog.write' // ranglar, razmerlar, tovar turlari, xomashyo, postavshik, korxona
+  | 'rates.write' // valyuta kurslari
+  | 'orders.read' // zakazlarni ko'rish
+  | 'orders.write' // zakaz yaratish va qoralamani tahrirlash (innovatsion bo'lim)
+  | 'orders.confirm' // zakazni tasdiqlash — xomashyo ta'minotga ketadi
+  | 'orders.reopen'; // tasdiqlangan zakazni qoralamaga qaytarish yoki bekor qilish
 
 const MATRIX: Record<Action, Role[]> = {
   'users.manage': ['admin'],
   'audit.read': ['admin', 'rahbar', 'buxgalter'],
+  'catalog.write': ['admin', 'innovatsiya', 'taminot'],
+  'rates.write': ['admin', 'buxgalter', 'taminot'],
+  'orders.read': ['admin', 'rahbar', 'innovatsiya', 'taminot', 'sklad', 'bichuv', 'tsex', 'otk', 'buxgalter'],
+  'orders.write': ['admin', 'innovatsiya'],
+  'orders.confirm': ['admin', 'innovatsiya'],
+  'orders.reopen': ['admin', 'rahbar'],
 };
 
 export function can(role: Role, action: Action): boolean {

@@ -123,3 +123,15 @@ tr.click:hover td { background: var(--soft); }
 
 .progress { height: 10px; background: var(--soft); border-radius: 99px; overflow: hidden; margin-bottom: 8px; }
 .progress span { display: block; height: 100%; background: var(--good); border-radius: 99px; }
+
+/* Zakaz sahifasi */
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; }
+table.matrix td, table.matrix th { white-space: nowrap; }
+table.matrix tr.total td { background: var(--soft); font-weight: 600; }
+button.x { all: unset; cursor: pointer; color: var(--muted); padding: 0 4px; margin-left: 4px; border-radius: 4px; }
+button.x:hover { color: var(--bad); background: var(--soft); }
+button.x:focus-visible { outline: 2px solid var(--brand); }
+.tabs .pill { margin-left: 4px; }
+@media (max-width: 640px) { dl.kv { grid-template-columns: 1fr; } dl.kv dt { margin-top: 6px; } }

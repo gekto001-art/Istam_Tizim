@@ -5,6 +5,9 @@ import { LoginPage, ChangePasswordPage } from './pages/Login';
 import { DashboardPage } from './pages/Dashboard';
 import { UsersPage } from './pages/Users';
 import { AuditPage } from './pages/Audit';
+import { CatalogPage } from './pages/Catalog';
+import { OrdersPage } from './pages/Orders';
+import { OrderPage } from './pages/Order';
 
 interface NavItem {
   to: string;
@@ -13,6 +16,8 @@ interface NavItem {
 }
 const NAV: [string, NavItem[]][] = [
   ['Asosiy', [{ to: '/', label: 'Dashboard', show: () => true }]],
+  ['Innovatsion bo\'lim', [{ to: '/orders', label: 'Zakazlar', show: (r) => can.ordersRead(r) }]],
+  ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
   [
     'Tizim',
     [
@@ -72,6 +77,9 @@ export function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<DashboardPage />} />
+        {can.ordersRead(me.role) && <Route path="/orders" element={<OrdersPage />} />}
+        {can.ordersRead(me.role) && <Route path="/orders/:id" element={<OrderPage />} />}
+        <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}
         <Route path="/password" element={<ChangePasswordPage />} />
