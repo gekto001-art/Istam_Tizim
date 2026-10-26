@@ -1,0 +1,77 @@
+# Ishga tushirish:  cp .env.example .env  (parollarni o'zgartiring)  &&  docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: istam
+      POSTGRES_USER: istam_owner
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?DB_OWNER_PASSWORD .env da berilmagan}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U istam_owner -d istam"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://istam_owner:${DB_OWNER_PASSWORD}@db:5432/istam
+      APP_DB_USER: istam_app
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD .env da berilmagan}
+      APP_DATABASE_URL: postgres://istam_app:${APP_DB_PASSWORD}@db:5432/istam
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET .env da berilmagan}
+      ADMIN_LOGIN: ${ADMIN_LOGIN:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD .env da berilmagan}
+      CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      # HTTPS bo'lmasa (faqat sinov uchun) false qiling
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+  # Zaxira nusxa: har kuni bazani nusxalaydi, shifrlaydi, S3 ga yuboradi; har oy tiklashni sinaydi
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: istam_owner
+      PGPASSWORD: ${DB_OWNER_PASSWORD}
+      PGDATABASE: istam
+      BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}
+      RESTORE_TEST_CRON: ${RESTORE_TEST_CRON:-0 5 1 * *}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY .env da berilmagan}
+      BACKUP_KEEP_LOCAL_DAYS: ${BACKUP_KEEP_LOCAL_DAYS:-7}
+      BACKUP_KEEP_DAILY_DAYS: ${BACKUP_KEEP_DAILY_DAYS:-30}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      BACKUP_LABEL: ${BACKUP_LABEL:-ISTAM}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-istam}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-}
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      NOTIFY_SUCCESS: ${BACKUP_NOTIFY_SUCCESS:-false}
+    volumes:
+      - backups:/backups
+
+volumes:
+  pgdata:
+  backups:
