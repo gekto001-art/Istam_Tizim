@@ -17,6 +17,7 @@ import { NakladnoyPage, OstatkaPage } from './pages/StockReports';
 import { KroyPage } from './pages/Kroy';
 import { BrakPage, KroyClosedPage, KroyRasxodPage, OtkPage, SemiPage } from './pages/KroyOtk';
 import { TsexOstatkaPage, TsexPrixodPage, TsexProductionPage, TsexXaPage } from './pages/Tsex';
+import { OtkFinalPage, SpisaniyaPage, TayyorPage } from './pages/OtkFinal';
 
 interface NavItem {
   to: string;
@@ -64,6 +65,14 @@ const NAV: [string, NavItem[]][] = [
       { to: '/tsex', label: 'Ishlab chiqarish', show: (r) => can.tsexRead(r) },
       { to: '/tsex/ostatka', label: 'Ostatka', show: (r) => can.tsexRead(r) },
       { to: '/tsex/xa', label: 'Ish/Chiq Xa', show: (r) => can.tsexRead(r) },
+    ],
+  ],
+  [
+    'OTK va tayyor mahsulot',
+    [
+      { to: '/otk', label: 'OTK (tayyor mahsulot)', show: (r) => can.fgRead(r) },
+      { to: '/tayyor', label: 'Tayyor mahsulot skladi', show: (r) => can.fgRead(r) },
+      { to: '/spisaniya', label: 'Spisaniya (P&L)', show: (r) => can.fgRead(r) },
     ],
   ],
   ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
@@ -150,6 +159,9 @@ export function App() {
         {can.tsexRead(me.role) && <Route path="/tsex/prixod" element={<TsexPrixodPage />} />}
         {can.tsexRead(me.role) && <Route path="/tsex/ostatka" element={<TsexOstatkaPage />} />}
         {can.tsexRead(me.role) && <Route path="/tsex/xa" element={<TsexXaPage />} />}
+        {can.fgRead(me.role) && <Route path="/otk" element={<OtkFinalPage />} />}
+        {can.fgRead(me.role) && <Route path="/tayyor" element={<TayyorPage />} />}
+        {can.fgRead(me.role) && <Route path="/spisaniya" element={<SpisaniyaPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

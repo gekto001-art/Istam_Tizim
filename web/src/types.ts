@@ -61,6 +61,7 @@ export const can = {
   otkWrite: has(['admin', 'otk']),
   tsexRead: has(['admin', 'rahbar', 'tsex', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'buxgalter']),
   tsexWrite: has(['admin', 'tsex']),
+  fgRead: has(['admin', 'rahbar', 'otk', 'sklad', 'sotuv', 'tsex', 'bichuv', 'innovatsiya', 'buxgalter']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -590,4 +591,60 @@ export interface TsexMaterial {
   fact_qty: number;
   qty: string;
   cost_uzs: string;
+}
+
+// ---------- OTK (tayyor mahsulot) va tayyor mahsulot skladi ----------
+export interface OtkOutput {
+  id: number;
+  doc_id: number;
+  out_date: string;
+  created_at: string;
+  issue_no: string | null;
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  artikul: string | null;
+  model: string | null;
+  producer_id: number;
+  producer_name: string;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  fact_qty: number;
+  otk_date: string | null;
+  otk_sort1: number | null;
+  otk_sort2: number | null;
+  otk_scrap: number | null;
+  unit_cost_uzs: string | null;
+  scrap_cost_uzs: string | null;
+  otk_by_name: string | null;
+}
+export interface FgStock {
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  artikul: string | null;
+  model: string | null;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  sort1: number;
+  sort2: number;
+  total: number;
+  avg_cost: string | null;
+}
+export interface Writeoff {
+  source: 'kroy' | 'otk';
+  date: string;
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  color_name: string;
+  size_name: string;
+  qty: number;
+  unit_cost_uzs: string | null;
+  amount_uzs: string;
+  ref_id: number;
 }

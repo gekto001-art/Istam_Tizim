@@ -261,6 +261,9 @@ tsexRouter.delete('/docs/:id', requireAction('tsex.write'), async (req, res) => 
   await tx(async (db) => {
     const d = (await db.query('SELECT * FROM tsex_docs WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!d) throw notFound('Ishlab chiqarish');
+    if ((await db.query('SELECT 1 FROM tsex_outputs WHERE doc_id = $1 AND otk_at IS NOT NULL LIMIT 1', [id])).rowCount) {
+      throw conflict('OTK tekshirgan ishlab chiqarishni o\'chirib bo\'lmaydi');
+    }
     await db.query('DELETE FROM tsex_docs WHERE id = $1', [id]);
     await audit(db, ctx, 'tsex_doc', id, 'delete', d, undefined);
   });

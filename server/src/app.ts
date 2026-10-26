@@ -15,6 +15,7 @@ import { purchasesRouter } from './routes/purchases.js';
 import { stockRouter } from './routes/stock.js';
 import { kroyRouter } from './routes/kroy.js';
 import { tsexRouter } from './routes/tsex.js';
+import { otkRouter } from './routes/otk.js';
 import { usersRouter } from './routes/users.js';
 
 export function createApp() {
@@ -41,6 +42,7 @@ export function createApp() {
   api.use('/stock', requireAuth, stockRouter);
   api.use('/kroy', requireAuth, kroyRouter);
   api.use('/tsex', requireAuth, tsexRouter);
+  api.use('/otk', requireAuth, otkRouter);
   api.use('/', requireAuth, catalogRouter); // /colors, /sizes, /materials ...
   app.use('/api', api);
 
