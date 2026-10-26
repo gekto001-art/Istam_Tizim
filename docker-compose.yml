@@ -32,6 +32,7 @@ services:
       CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
       # HTTPS bo'lmasa (faqat sinov uchun) false qiling
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
 
   web:
     build: ./web

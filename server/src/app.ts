@@ -13,7 +13,7 @@ import { usersRouter } from './routes/users.js';
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
+  app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin, credentials: true }));

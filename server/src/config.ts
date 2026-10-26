@@ -24,6 +24,8 @@ export const config = {
   // HTTPS orqali ishlaganda true. Faqat HTTP bilan sinov uchun COOKIE_SECURE=false
   cookieSecure: (process.env.COOKIE_SECURE ?? (env === 'production' ? 'true' : 'false')) === 'true',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  // API oldidagi proksilar soni (mijoz IP si to'g'ri aniqlanishi uchun): Docker'dagi nginx = 1, oldida server nginx ham bo'lsa = 2
+  trustProxy: Number(process.env.TRUST_PROXY ?? 1),
   logLevel: process.env.LOG_LEVEL ?? (env === 'test' ? 'silent' : 'info'),
 };
 
