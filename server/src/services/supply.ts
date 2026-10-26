@@ -35,47 +35,52 @@ export function distribute(plan: number[], total: number): number[] {
   return out;
 }
 
-/** Fakt mato bo'yicha har rangning yangi sonini hisoblab, order_items.actual_qty ga yozadi. */
-export async function recomputeActuals(db: Db, orderId: number): Promise<void> {
-  const colors = (
+/** Asosiy mato qatorining kelishilgan fakt miqdoridan mahsulot soni (yuqoriga). Kelishilmagan bo'lsa null. */
+async function productsFromFact(db: Db, mainId: number, perUnit: string): Promise<number | null> {
+  const r = (
     await db.query(
-      `SELECT i.color_id, sum(i.qty) AS plan,
-              m.id AS main_id, m.per_unit, m.from_us
-         FROM order_items i
-         LEFT JOIN order_materials m ON m.order_id = i.order_id AND m.color_id = i.color_id AND m.is_main
-        WHERE i.order_id = $1
-        GROUP BY i.color_id, m.id, m.per_unit, m.from_us`,
+      `SELECT ceil(round(sum(l.fact_qty * s.plan_qty / l.plan_qty), 3) / $2) AS total, count(*) AS n
+         FROM purchase_line_sources s
+         JOIN purchase_order_lines l ON l.id = s.line_id
+         JOIN purchase_orders p ON p.id = l.po_id
+        WHERE s.order_material_id = $1 AND p.status = ANY($3::text[])`,
+      [mainId, perUnit, AGREED],
+    )
+  ).rows[0];
+  return Number(r.n) ? Number(r.total) : null;
+}
+
+/**
+ * Fakt mato bo'yicha har katakning (razmer × rang) yangi sonini hisoblab, order_items.actual_qty ga yozadi:
+ *  - rang bo'yicha umumiy asosiy mato → rang jami = fakt ÷ sarf, razmerlarga reja ulushida bo'linadi;
+ *  - razmer bo'yicha asosiy mato → shu katak soni = fakt ÷ sarf;
+ *  - asosiy mato yo'q yoki uni korxona beradi → son o'zgarmaydi.
+ */
+export async function recomputeActuals(db: Db, orderId: number): Promise<void> {
+  const items = (
+    await db.query(
+      `SELECT i.id, i.color_id, i.size_id, i.qty FROM order_items i JOIN sizes s ON s.id = i.size_id
+        WHERE i.order_id = $1 ORDER BY i.color_id, s.sort, i.id`,
       [orderId],
     )
-  ).rows;
-  for (const c of colors) {
-    let total: number | null;
-    if (!c.main_id || !c.from_us) {
-      // asosiy mato yo'q yoki uni korxona o'zi beradi — son o'zgarmaydi
-      total = Number(c.plan);
-    } else {
-      const r = (
-        await db.query(
-          `SELECT ceil(round(sum(l.fact_qty * s.plan_qty / l.plan_qty), 3) / $2) AS total, count(*) AS n
-             FROM purchase_line_sources s
-             JOIN purchase_order_lines l ON l.id = s.line_id
-             JOIN purchase_orders p ON p.id = l.po_id
-            WHERE s.order_material_id = $1 AND p.status = ANY($3::text[])`,
-          [c.main_id, c.per_unit, AGREED],
-        )
-      ).rows[0];
-      total = Number(r.n) ? Number(r.total) : null;
+  ).rows as { id: number; color_id: number; size_id: number; qty: number }[];
+  const mains = (
+    await db.query('SELECT id, color_id, size_id, per_unit, from_us FROM order_materials WHERE order_id = $1 AND is_main', [orderId])
+  ).rows as { id: number; color_id: number; size_id: number | null; per_unit: string; from_us: boolean }[];
+  const set = (id: number, v: number | null) => db.query('UPDATE order_items SET actual_qty = $2 WHERE id = $1', [id, v]);
+
+  for (const colorId of [...new Set(items.map((i) => i.color_id))]) {
+    const ci = items.filter((i) => i.color_id === colorId);
+    const wide = mains.find((m) => m.color_id === colorId && m.size_id == null);
+    if (wide) {
+      const total = wide.from_us ? await productsFromFact(db, wide.id, wide.per_unit) : ci.reduce((a, i) => a + i.qty, 0);
+      const parts = total == null ? ci.map(() => null) : distribute(ci.map((i) => i.qty), total);
+      for (const [k, it] of ci.entries()) await set(it.id, parts[k]);
+      continue;
     }
-    const items = (
-      await db.query(
-        `SELECT i.id, i.qty FROM order_items i JOIN sizes s ON s.id = i.size_id
-          WHERE i.order_id = $1 AND i.color_id = $2 ORDER BY s.sort, i.id`,
-        [orderId, c.color_id],
-      )
-    ).rows;
-    const parts = total == null ? items.map(() => null) : distribute(items.map((i) => i.qty), total);
-    for (const [k, it] of items.entries()) {
-      await db.query('UPDATE order_items SET actual_qty = $2 WHERE id = $1', [it.id, parts[k]]);
+    for (const it of ci) {
+      const m = mains.find((x) => x.color_id === colorId && x.size_id === it.size_id);
+      await set(it.id, !m || !m.from_us ? it.qty : await productsFromFact(db, m.id, m.per_unit));
     }
   }
 }
@@ -84,6 +89,8 @@ interface NeedRow {
   order_material_id: number;
   color_id: number;
   color_name: string;
+  size_id: number | null;
+  size_name: string | null;
   material_id: number;
   material_name: string;
   material_code: string | null;
@@ -118,25 +125,26 @@ export async function supplyPlan(db: Db, orderId: number) {
   if (!order) throw notFound('Zakaz');
   const rows: NeedRow[] = (
     await db.query(
-      `WITH cq AS (SELECT color_id, sum(qty) AS plan, sum(actual_qty) AS actual, bool_and(actual_qty IS NOT NULL) AS has_actual
-                     FROM order_items WHERE order_id = $1 GROUP BY color_id)
-       SELECT m.id AS order_material_id, m.color_id, c.name AS color_name, m.material_id, mt.name AS material_name, mt.code AS material_code,
+      `WITH lq AS (SELECT m.id, order_material_qty(m.order_id, m.color_id, m.size_id, false) AS plan,
+                          order_material_qty(m.order_id, m.color_id, m.size_id, true) AS actual
+                     FROM order_materials m WHERE m.order_id = $1)
+       SELECT m.id AS order_material_id, m.color_id, c.name AS color_name, m.size_id, sz.name AS size_name, m.material_id, mt.name AS material_name, mt.code AS material_code,
               mt.unit, m.supplier_id, s.name AS supplier_name, m.material_color_id, mc.name AS material_color_name, m.color_code,
               m.material_size, m.per_unit, m.price, m.currency, m.rate, m.is_main,
-              cq.plan AS plan_count, CASE WHEN cq.has_actual THEN cq.actual END AS actual_count,
-              CASE WHEN m.is_main THEN round(cq.plan * m.per_unit, 3)
-                   WHEN cq.has_actual THEN round(cq.actual * m.per_unit, 3) END AS qty,
+              lq.plan AS plan_count, lq.actual AS actual_count,
+              CASE WHEN m.is_main THEN round(lq.plan * m.per_unit, 3) ELSE round(lq.actual * m.per_unit, 3) END AS qty,
               (SELECT l.po_id FROM purchase_line_sources ps JOIN purchase_order_lines l ON l.id = ps.line_id
                  JOIN purchase_orders p ON p.id = l.po_id
                 WHERE ps.order_material_id = m.id AND p.status <> 'cancelled' LIMIT 1) AS ordered_po_id
          FROM order_materials m
-         JOIN cq ON cq.color_id = m.color_id
+         JOIN lq ON lq.id = m.id
          JOIN colors c ON c.id = m.color_id
+         LEFT JOIN sizes sz ON sz.id = m.size_id
          JOIN materials mt ON mt.id = m.material_id
          LEFT JOIN suppliers s ON s.id = m.supplier_id
          LEFT JOIN colors mc ON mc.id = m.material_color_id
-        WHERE m.order_id = $1 AND m.from_us
-        ORDER BY m.is_main DESC, s.name NULLS LAST, mt.name, lower(c.name)`,
+        WHERE m.order_id = $1 AND m.from_us AND lq.plan > 0
+        ORDER BY m.is_main DESC, s.name NULLS LAST, mt.name, lower(c.name), sz.sort NULLS FIRST`,
       [orderId],
     )
   ).rows;
@@ -144,7 +152,7 @@ export async function supplyPlan(db: Db, orderId: number) {
     await db.query(
       `SELECT i.color_id, c.name AS color_name, sum(i.qty) AS plan_count,
               CASE WHEN bool_and(i.actual_qty IS NOT NULL) THEN sum(i.actual_qty) END AS actual_count,
-              (SELECT mt.name FROM order_materials m JOIN materials mt ON mt.id = m.material_id
+              (SELECT string_agg(DISTINCT mt.name, ', ') FROM order_materials m JOIN materials mt ON mt.id = m.material_id
                 WHERE m.order_id = i.order_id AND m.color_id = i.color_id AND m.is_main AND m.from_us) AS main_material
          FROM order_items i JOIN colors c ON c.id = i.color_id
         WHERE i.order_id = $1 GROUP BY i.order_id, i.color_id, c.name ORDER BY lower(c.name)`,

@@ -110,6 +110,9 @@ export interface OrderMaterial {
   id: number;
   color_id: number;
   color_name: string;
+  size_id: number | null;
+  size_name: string | null;
+  unit_amount: string;
   material_id: number;
   material_name: string;
   material_code: string | null;
@@ -188,6 +191,8 @@ export interface SupplyNeed {
   order_material_id: number;
   color_id: number;
   color_name: string;
+  size_id: number | null;
+  size_name: string | null;
   material_id: number;
   material_name: string;
   material_code: string | null;

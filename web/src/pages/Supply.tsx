@@ -76,7 +76,7 @@ function NeedsTable({ rows, waiting }: { rows: SupplyNeed[]; waiting?: boolean }
       <table>
         <thead>
           <tr>
-            <th>Rang (mahsulot)</th>
+            <th>Mahsulot (rang · razmer)</th>
             <th>Postavshik</th>
             <th>Xomashyo</th>
             <th>Rangi / kodi</th>
@@ -91,7 +91,10 @@ function NeedsTable({ rows, waiting }: { rows: SupplyNeed[]; waiting?: boolean }
         <tbody>
           {rows.map((r) => (
             <tr key={r.order_material_id}>
-              <td>{r.color_name}</td>
+              <td>
+                {r.color_name}
+                <div className="note">{r.size_name ?? 'barcha razmer'}</div>
+              </td>
               <td>{r.supplier_name ?? <span className="pill bad">tanlanmagan</span>}</td>
               <td>
                 <b>{r.material_name}</b>

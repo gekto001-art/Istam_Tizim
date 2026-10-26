@@ -136,3 +136,13 @@ button.x:focus-visible { outline: 2px solid var(--brand); }
 .tabs .pill { margin-left: 4px; }
 @media (max-width: 640px) { dl.kv { grid-template-columns: 1fr; } dl.kv dt { margin-top: 6px; } }
 .fakt { font-size: 11.5px; color: var(--good); font-weight: 600; }
+
+/* Xomashyo jadvali (Sheets ko'rinishida) */
+.sheet-wrap { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+table.sheet { font-size: 12.5px; min-width: 1900px; }
+table.sheet th { position: sticky; top: 0; background: var(--panel); z-index: 1; padding: 6px 6px; }
+table.sheet td { padding: 4px 6px; vertical-align: middle; white-space: nowrap; }
+table.sheet select, table.sheet input.cell { padding: 4px 6px; font-size: 12.5px; max-width: 150px; }
+table.sheet input.cell.sm { width: 70px; }
+table.sheet input.cell.num { width: 80px; text-align: right; font-family: var(--f-mono); }
+table.sheet tr.bad-row td { background: color-mix(in srgb, var(--bad) 6%, transparent); }

@@ -55,25 +55,27 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
       [id],
     )
   ).rows;
-  // Har qator: shu rangdagi jami dona × sarf = kerakli miqdor; × narx × kurs = so'mda
+  // Har qator: tayyor mahsulot soni (razmer × rang yoki rangning barcha razmerlari) × sarf = umumiy miqdor
   const materials = (
     await db.query(
-      `WITH cq AS (SELECT color_id, sum(qty) AS qty FROM order_items WHERE order_id = $1 GROUP BY color_id)
-       SELECT m.*, c.name AS color_name, mt.name AS material_name, mt.code AS material_code, mt.unit,
+      `WITH lq AS (SELECT m.id, order_material_qty(m.order_id, m.color_id, m.size_id, false) AS pq FROM order_materials m WHERE m.order_id = $1)
+       SELECT m.*, c.name AS color_name, sz.name AS size_name, mt.name AS material_name, mt.code AS material_code, mt.unit,
               s.name AS supplier_name, mc.name AS material_color_name,
-              coalesce(cq.qty, 0) AS product_qty,
-              round(coalesce(cq.qty, 0) * m.per_unit, 3) AS total_qty,
-              round(coalesce(cq.qty, 0) * m.per_unit * m.price, 2) AS total_amount,
-              round(coalesce(cq.qty, 0) * m.per_unit * m.price * m.rate, 2) AS total_uzs,
+              lq.pq AS product_qty,
+              round(m.per_unit * m.price, 4) AS unit_amount,
+              round(lq.pq * m.per_unit, 3) AS total_qty,
+              round(lq.pq * m.per_unit * m.price, 2) AS total_amount,
+              round(lq.pq * m.per_unit * m.price * m.rate, 2) AS total_uzs,
               round(m.per_unit * m.price * m.rate, 2) AS unit_cost_uzs
          FROM order_materials m
+         JOIN lq ON lq.id = m.id
          JOIN colors c ON c.id = m.color_id
+         LEFT JOIN sizes sz ON sz.id = m.size_id
          JOIN materials mt ON mt.id = m.material_id
          LEFT JOIN suppliers s ON s.id = m.supplier_id
          LEFT JOIN colors mc ON mc.id = m.material_color_id
-         LEFT JOIN cq ON cq.color_id = m.color_id
         WHERE m.order_id = $1
-        ORDER BY lower(c.name), m.sort, m.id`,
+        ORDER BY m.sort, m.id`,
       [id],
     )
   ).rows;
@@ -84,39 +86,38 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
       [id],
     )
   ).rows;
-  // Rang bo'yicha 1 dona tannarx (reja): xomashyo + ish
+  // Rang bo'yicha tannarx (reja): xomashyo jami ÷ soni (razmerlar farq qilsa — o'rtacha) + ish
   const byColor = (
     await db.query(
       `WITH cq AS (SELECT color_id, sum(qty) AS qty, sum(actual_qty) AS actual_qty, bool_and(actual_qty IS NOT NULL) AS has_actual
                    FROM order_items WHERE order_id = $1 GROUP BY color_id),
-            mat AS (SELECT color_id, sum(round(per_unit * price * rate, 2)) AS unit_cost FROM order_materials WHERE order_id = $1 GROUP BY color_id),
+            mat AS (SELECT color_id, sum(round(order_material_qty(order_id, color_id, size_id, false) * per_unit * price * rate, 2)) AS total
+                      FROM order_materials WHERE order_id = $1 GROUP BY color_id),
             wk AS (SELECT coalesce(sum(price), 0) AS unit_cost FROM order_works WHERE order_id = $1)
        SELECT cq.color_id, c.name AS color_name, cq.qty, CASE WHEN cq.has_actual THEN cq.actual_qty END AS actual_qty,
-              coalesce(mat.unit_cost, 0) AS material_cost, wk.unit_cost AS work_cost,
-              coalesce(mat.unit_cost, 0) + wk.unit_cost AS unit_cost,
-              round(cq.qty * (coalesce(mat.unit_cost, 0) + wk.unit_cost), 2) AS total_cost
+              round(coalesce(mat.total, 0) / nullif(cq.qty, 0), 2) AS material_cost, wk.unit_cost AS work_cost,
+              round(coalesce(mat.total, 0) / nullif(cq.qty, 0), 2) + wk.unit_cost AS unit_cost,
+              round(coalesce(mat.total, 0) + cq.qty * wk.unit_cost, 2) AS total_cost
          FROM cq JOIN colors c ON c.id = cq.color_id LEFT JOIN mat ON mat.color_id = cq.color_id CROSS JOIN wk
         ORDER BY lower(c.name)`,
       [id],
     )
   ).rows;
-  // Kerakli xomashyo jami (barcha ranglar bo'yicha yig'ilgan) — ta'minotga ketadigan ro'yxat
+  // Kerakli xomashyo jami (barcha razmer va ranglar bo'yicha yig'ilgan) — ta'minotga ketadigan ro'yxat
   const needs = (
     await db.query(
-      `WITH cq AS (SELECT color_id, sum(qty) AS qty FROM order_items WHERE order_id = $1 GROUP BY color_id)
-       SELECT m.material_id, mt.name AS material_name, mt.code AS material_code, mt.unit,
+      `SELECT m.material_id, mt.name AS material_name, mt.code AS material_code, mt.unit,
               m.supplier_id, s.name AS supplier_name, m.material_color_id, mc.name AS material_color_name,
               m.color_code, m.material_size, m.price, m.currency, m.rate, m.from_us, m.is_main,
-              round(sum(coalesce(cq.qty, 0) * m.per_unit), 3) AS total_qty,
-              round(sum(coalesce(cq.qty, 0) * m.per_unit * m.price), 2) AS total_amount,
-              round(sum(coalesce(cq.qty, 0) * m.per_unit * m.price * m.rate), 2) AS total_uzs,
+              round(sum(order_material_qty(m.order_id, m.color_id, m.size_id, false) * m.per_unit), 3) AS total_qty,
+              round(sum(order_material_qty(m.order_id, m.color_id, m.size_id, false) * m.per_unit * m.price), 2) AS total_amount,
+              round(sum(order_material_qty(m.order_id, m.color_id, m.size_id, false) * m.per_unit * m.price * m.rate), 2) AS total_uzs,
               string_agg(DISTINCT c.name, ', ') AS for_colors
          FROM order_materials m
          JOIN materials mt ON mt.id = m.material_id
          JOIN colors c ON c.id = m.color_id
          LEFT JOIN suppliers s ON s.id = m.supplier_id
          LEFT JOIN colors mc ON mc.id = m.material_color_id
-         LEFT JOIN cq ON cq.color_id = m.color_id
         WHERE m.order_id = $1
         GROUP BY m.material_id, mt.name, mt.code, mt.unit, m.supplier_id, s.name, m.material_color_id, mc.name,
                  m.color_code, m.material_size, m.price, m.currency, m.rate, m.from_us, m.is_main
@@ -128,28 +129,39 @@ export async function orderDetail(db: Db | typeof pool, id: number) {
     await db.query(
       `SELECT (SELECT coalesce(sum(qty), 0) FROM order_items WHERE order_id = $1) AS qty,
               (SELECT sum(actual_qty) FROM order_items WHERE order_id = $1 HAVING bool_and(actual_qty IS NOT NULL)) AS actual_qty,
-              (SELECT coalesce(sum(round(i.qty * m.per_unit * m.price * m.rate, 2)), 0)
-                 FROM order_materials m JOIN order_items i ON i.order_id = m.order_id AND i.color_id = m.color_id
-                WHERE m.order_id = $1) AS material_uzs,
+              (SELECT coalesce(sum(round(order_material_qty(order_id, color_id, size_id, false) * per_unit * price * rate, 2)), 0)
+                 FROM order_materials WHERE order_id = $1) AS material_uzs,
               (SELECT coalesce(sum(qty), 0) FROM order_items WHERE order_id = $1)
                 * (SELECT coalesce(sum(price), 0) FROM order_works WHERE order_id = $1) AS work_uzs`,
       [id],
     )
   ).rows[0];
-  const colorsInMatrix = new Set(items.map((i) => i.color_id));
-  const colorsWithMaterials = new Set(materials.map((m) => m.color_id));
-  const missing = byColor.filter((c) => !colorsWithMaterials.has(c.color_id)).map((c) => c.color_name as string);
-  const warnings: string[] = [];
-  if (!items.length) warnings.push('Razmer × rang jadvaliga miqdor kiritilmagan');
-  if (missing.length) warnings.push(`Xomashyo normasi kiritilmagan ranglar: ${missing.join(', ')}`);
-  const orphan = [...colorsWithMaterials].filter((c) => !colorsInMatrix.has(c));
-  if (orphan.length) warnings.push('Jadvalda yo\'q rang uchun xomashyo qatorlari bor');
+  const warnings = materialWarnings(items, materials);
   if (!works.length) warnings.push('Ish narxlari (kroy, tikuv) kiritilmagan');
-  const noMain = byColor.filter((c) => colorsWithMaterials.has(c.color_id) && !materials.some((m) => m.color_id === c.color_id && m.is_main));
-  if (noMain.length) {
-    warnings.push(`Asosiy mato belgilanmagan ranglar: ${noMain.map((c) => c.color_name).join(', ')} — ularning soni fakt matoga qarab o'zgarmaydi`);
-  }
   return { order, items, materials, works, by_color: byColor, needs, totals, warnings };
+}
+
+type VariantItem = { size_id: number; color_id: number; size_name: string; color_name: string };
+type LineRef = { color_id: number; size_id: number | null; is_main: boolean };
+
+/** Razmer × rang bo'yicha tekshiruv: har katak xomashyo bilan qoplanganmi, jadvalda yo'q katak uchun qator yo'qmi. */
+function materialWarnings(items: VariantItem[], materials: LineRef[]) {
+  const warnings: string[] = [];
+  if (!items.length) {
+    warnings.push('Razmer × rang jadvaliga miqdor kiritilmagan');
+    return warnings;
+  }
+  const covers = (m: LineRef, i: VariantItem) => m.color_id === i.color_id && (m.size_id == null || m.size_id === i.size_id);
+  const bare = items.filter((i) => !materials.some((m) => covers(m, i)));
+  if (bare.length) warnings.push(`Xomashyo kiritilmagan: ${bare.map((i) => `${i.size_name} ${i.color_name}`).join(', ')}`);
+  if (materials.some((m) => !items.some((i) => covers(m, i)))) warnings.push('Jadvalda yo\'q razmer/rang uchun xomashyo qatorlari bor');
+  const noMain = items.filter((i) => materials.some((m) => covers(m, i)) && !materials.some((m) => m.is_main && covers(m, i)));
+  if (noMain.length) {
+    warnings.push(
+      `Asosiy mato belgilanmagan: ${noMain.map((i) => `${i.size_name} ${i.color_name}`).join(', ')} — ularning soni fakt matoga qarab o'zgarmaydi`,
+    );
+  }
+  return warnings;
 }
 
 // ---------- Ro'yxat ----------
@@ -274,16 +286,18 @@ ordersRouter.put('/:id/items', async (req, res) => {
     const o = await orderOf(db, id, true);
     assertDraft(ctx, o);
     const old = (await db.query('SELECT size_id, color_id, qty FROM order_items WHERE order_id = $1 ORDER BY size_id, color_id', [id])).rows;
-    // Jadvaldan olib tashlangan rang uchun xomashyo qatorlari bo'lsa — avval ularni o'chirish kerak
-    const colors = new Set(rows.map((r) => r.color_id));
-    const orphan = (
+    // Jadvaldan olib tashlangan razmer/rang uchun xomashyo qatorlari bo'lsa — avval ularni o'chirish kerak
+    const lines = (
       await db.query(
-        `SELECT DISTINCT c.name FROM order_materials m JOIN colors c ON c.id = m.color_id WHERE m.order_id = $1 AND NOT (m.color_id = ANY($2::int[]))`,
-        [id, [...colors]],
+        `SELECT DISTINCT m.color_id, m.size_id, c.name AS color_name, s.name AS size_name
+           FROM order_materials m JOIN colors c ON c.id = m.color_id LEFT JOIN sizes s ON s.id = m.size_id WHERE m.order_id = $1`,
+        [id],
       )
-    ).rows.map((r) => r.name);
+    ).rows;
+    const orphan = lines.filter((m) => !rows.some((r) => r.color_id === m.color_id && (m.size_id == null || r.size_id === m.size_id)));
     if (orphan.length) {
-      throw conflict(`Bu ranglar uchun xomashyo normasi bor: ${orphan.join(', ')}. Rangni jadvaldan olib tashlashdan oldin uning xomashyo qatorlarini o'chiring`);
+      const names = orphan.map((m) => (m.size_name ? `${m.size_name} ${m.color_name}` : m.color_name)).join(', ');
+      throw conflict(`Bular uchun xomashyo qatorlari bor: ${names}. Jadvaldan olib tashlashdan oldin ularning xomashyo qatorlarini o'chiring`);
     }
     await db.query('DELETE FROM order_items WHERE order_id = $1', [id]);
     for (const i of rows) {
@@ -296,7 +310,7 @@ ordersRouter.put('/:id/items', async (req, res) => {
   res.json(data);
 });
 
-// ---------- Xomashyo normasi ----------
+// ---------- Xomashyo normasi (Sheets "Zakazlar" jadvali: har qator — tayyor mahsulot razmeri × rangi uchun) ----------
 const materialBody = z.object({
   material_id: idParam,
   supplier_id: idParam.nullish(),
@@ -312,16 +326,40 @@ const materialBody = z.object({
   note: optText(300),
 });
 
-/** Har rangda bitta asosiy mato. */
-async function assertNoOtherMain(db: Db, orderId: number, colorIds: number[], exceptId?: number) {
-  const r = (
+type Variant = { color_id: number; size_id: number | null };
+type Matrix = { color_id: number; size_id: number; color_name: string; size_name: string }[];
+
+async function matrixOf(db: Db, orderId: number): Promise<Matrix> {
+  return (
     await db.query(
-      `SELECT c.name FROM order_materials m JOIN colors c ON c.id = m.color_id
-        WHERE m.order_id = $1 AND m.is_main AND m.color_id = ANY($2::int[]) AND ($3::int IS NULL OR m.id <> $3)`,
-      [orderId, colorIds, exceptId ?? null],
+      `SELECT i.color_id, i.size_id, c.name AS color_name, s.name AS size_name
+         FROM order_items i JOIN colors c ON c.id = i.color_id JOIN sizes s ON s.id = i.size_id WHERE i.order_id = $1`,
+      [orderId],
     )
-  ).rows.map((x) => x.name);
-  if (r.length) throw badRequest(`Bu ranglarda asosiy mato allaqachon bor: ${r.join(', ')}`);
+  ).rows;
+}
+
+/** Qator jadvaldagi katakka (yoki rangga — razmer "hammasi") mos kelishi kerak. */
+function assertInMatrix(matrix: Matrix, v: Variant) {
+  const ok = matrix.some((i) => i.color_id === v.color_id && (v.size_id == null || i.size_id === v.size_id));
+  if (!ok) throw badRequest('Xomashyo faqat razmer × rang jadvalidagi kataklar uchun kiritiladi');
+}
+
+/**
+ * Asosiy mato: har katakda (razmer × rang) ko'pi bilan bitta. Rang bo'yicha umumiy ("hammasi") asosiy mato
+ * shu rangning barcha razmerlarini qoplaydi.
+ */
+function assertMainUnique(matrix: Matrix, mains: Variant[]) {
+  for (const cell of matrix) {
+    const n = mains.filter((m) => m.color_id === cell.color_id && (m.size_id == null || m.size_id === cell.size_id)).length;
+    if (n > 1) throw badRequest(`${cell.size_name} ${cell.color_name} uchun asosiy mato bittadan ortiq`);
+  }
+}
+
+async function mainsOf(db: Db, orderId: number, exceptIds: number[] = []): Promise<Variant[]> {
+  return (
+    await db.query('SELECT color_id, size_id FROM order_materials WHERE order_id = $1 AND is_main AND NOT (id = ANY($2::int[]))', [orderId, exceptIds])
+  ).rows;
 }
 
 /** Kurs berilmasa — zakaz sanasidagi kurs; so'm uchun 1. */
@@ -333,50 +371,47 @@ async function resolveRate(db: Db, currency: string, rate: number | null | undef
   return Number(r);
 }
 
-/** Bir xomashyo bir nechta rangdagi mahsulot uchun birdan qo'shiladi (har rangga alohida qator). */
+const INSERT_LINE = `INSERT INTO order_materials (order_id, color_id, size_id, material_id, supplier_id, material_color_id, color_code, material_size,
+                                    per_unit, price, currency, rate, from_us, note, sort, is_main)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`;
+
+/** Bir xomashyo bir nechta rang uchun birdan qo'shiladi (har rangga alohida qator); size_id berilsa — faqat shu razmer. */
 ordersRouter.post('/:id/materials', async (req, res) => {
   const ctx = ctxOf(req);
   const id = idParam.parse(req.params.id);
-  const b = materialBody.extend({ color_ids: z.array(idParam).min(1).max(100) }).parse(req.body);
+  const b = materialBody.extend({ color_ids: z.array(idParam).min(1).max(100), size_id: idParam.nullish() }).parse(req.body);
   const data = await tx(async (db) => {
     const o = await orderOf(db, id, true);
     assertDraft(ctx, o);
-    const inMatrix = new Set(
-      (await db.query('SELECT DISTINCT color_id FROM order_items WHERE order_id = $1', [id])).rows.map((r) => r.color_id as number),
-    );
+    const matrix = await matrixOf(db, id);
     const colorIds = [...new Set(b.color_ids)];
-    if (colorIds.some((c) => !inMatrix.has(c))) throw badRequest('Xomashyo faqat jadvaldagi (razmer × rang) ranglar uchun qo\'shiladi');
+    for (const c of colorIds) assertInMatrix(matrix, { color_id: c, size_id: b.size_id ?? null });
     const mat = (await db.query('SELECT id, supplier_id FROM materials WHERE id = $1', [b.material_id])).rows[0];
     if (!mat) throw notFound('Xomashyo');
     const rate = await resolveRate(db, b.currency, b.rate, o.order_date);
-    if (b.is_main) await assertNoOtherMain(db, id, colorIds);
+    if (b.is_main) assertMainUnique(matrix, [...(await mainsOf(db, id)), ...colorIds.map((c) => ({ color_id: c, size_id: b.size_id ?? null }))]);
     const created = [];
     for (const colorId of colorIds) {
-      const sort = (await db.query('SELECT coalesce(max(sort), 0) + 1 AS s FROM order_materials WHERE order_id = $1 AND color_id = $2', [id, colorId]))
-        .rows[0].s;
+      const sort = (await db.query('SELECT coalesce(max(sort), 0) + 1 AS s FROM order_materials WHERE order_id = $1', [id])).rows[0].s;
       const r = (
-        await db.query(
-          `INSERT INTO order_materials (order_id, color_id, material_id, supplier_id, material_color_id, color_code, material_size,
-                                        per_unit, price, currency, rate, from_us, note, sort, is_main)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-          [
-            id,
-            colorId,
-            b.material_id,
-            b.supplier_id ?? mat.supplier_id ?? null,
-            b.material_color_id ?? null,
-            b.color_code,
-            b.material_size,
-            b.per_unit,
-            b.price,
-            b.currency,
-            rate,
-            b.from_us,
-            b.note,
-            sort,
-            b.is_main,
-          ],
-        )
+        await db.query(INSERT_LINE, [
+          id,
+          colorId,
+          b.size_id ?? null,
+          b.material_id,
+          b.supplier_id ?? mat.supplier_id ?? null,
+          b.material_color_id ?? null,
+          b.color_code,
+          b.material_size,
+          b.per_unit,
+          b.price,
+          b.currency,
+          rate,
+          b.from_us,
+          b.note,
+          sort,
+          b.is_main,
+        ])
       ).rows[0];
       created.push(r);
     }
@@ -386,11 +421,81 @@ ordersRouter.post('/:id/materials', async (req, res) => {
   res.status(201).json(data);
 });
 
+/**
+ * Butun jadvalni saqlash (Sheets'dagidek qatorlar bir joyda tahrirlanadi):
+ * id bor qator yangilanadi, id siz — qo'shiladi, ro'yxatda yo'q eski qatorlar o'chiriladi. Tartib — ro'yxat tartibi.
+ */
+ordersRouter.put('/:id/materials', async (req, res) => {
+  const ctx = ctxOf(req);
+  const id = idParam.parse(req.params.id);
+  const { lines } = z
+    .object({ lines: z.array(materialBody.extend({ id: idParam.optional(), color_id: idParam, size_id: idParam.nullish() })).max(2000) })
+    .parse(req.body);
+  const data = await tx(async (db) => {
+    const o = await orderOf(db, id, true);
+    assertDraft(ctx, o);
+    const matrix = await matrixOf(db, id);
+    for (const l of lines) assertInMatrix(matrix, { color_id: l.color_id, size_id: l.size_id ?? null });
+    assertMainUnique(
+      matrix,
+      lines.filter((l) => l.is_main).map((l) => ({ color_id: l.color_id, size_id: l.size_id ?? null })),
+    );
+    const old = (await db.query('SELECT * FROM order_materials WHERE order_id = $1 ORDER BY sort, id', [id])).rows;
+    const oldIds = new Set(old.map((x) => x.id as number));
+    for (const l of lines) if (l.id != null && !oldIds.has(l.id)) throw notFound('Xomashyo qatori');
+    const keep = new Set(lines.filter((l) => l.id != null).map((l) => l.id));
+    await db.query('DELETE FROM order_materials WHERE order_id = $1 AND NOT (id = ANY($2::int[]))', [id, [...keep]]);
+    // asosiy mato belgilari almashganda unikal indeks to'qnashmasligi uchun avval olib qo'yiladi
+    await db.query('UPDATE order_materials SET is_main = false WHERE order_id = $1', [id]);
+    const supplierOf = new Map(
+      (await db.query('SELECT id, supplier_id FROM materials WHERE id = ANY($1::int[])', [[...new Set(lines.map((l) => l.material_id))]])).rows.map((r) => [
+        r.id as number,
+        r.supplier_id as number | null,
+      ]),
+    );
+    for (const [i, l] of lines.entries()) {
+      if (!supplierOf.has(l.material_id)) throw notFound('Xomashyo');
+      const rate = await resolveRate(db, l.currency, l.rate, o.order_date);
+      const v = [
+        l.color_id,
+        l.size_id ?? null,
+        l.material_id,
+        l.supplier_id ?? supplierOf.get(l.material_id) ?? null,
+        l.material_color_id ?? null,
+        l.color_code,
+        l.material_size,
+        l.per_unit,
+        l.price,
+        l.currency,
+        rate,
+        l.from_us,
+        l.note,
+        i + 1,
+        l.is_main,
+      ];
+      if (l.id != null) {
+        await db.query(
+          `UPDATE order_materials SET color_id = $2, size_id = $3, material_id = $4, supplier_id = $5, material_color_id = $6, color_code = $7,
+                  material_size = $8, per_unit = $9, price = $10, currency = $11, rate = $12, from_us = $13, note = $14, sort = $15, is_main = $16
+            WHERE id = $1`,
+          [l.id, ...v],
+        );
+      } else {
+        await db.query(INSERT_LINE, [id, ...v]);
+      }
+    }
+    const now = (await db.query('SELECT * FROM order_materials WHERE order_id = $1 ORDER BY sort, id', [id])).rows;
+    await audit(db, ctx, 'order', id, 'materials', old, now);
+    return orderDetail(db, id);
+  });
+  res.json(data);
+});
+
 ordersRouter.patch('/:id/materials/:mid', async (req, res) => {
   const ctx = ctxOf(req);
   const id = idParam.parse(req.params.id);
   const mid = idParam.parse(req.params.mid);
-  const b = materialBody.partial().parse(req.body);
+  const b = materialBody.extend({ size_id: idParam.nullish() }).partial().parse(req.body);
   const data = await tx(async (db) => {
     const o = await orderOf(db, id, true);
     assertDraft(ctx, o);
@@ -400,11 +505,13 @@ ordersRouter.patch('/:id/materials/:mid', async (req, res) => {
     // valyuta o'zgarsa va kurs berilmasa — yangi valyuta kursi olinadi
     const rate = b.rate != null || b.currency !== undefined ? await resolveRate(db, currency, b.rate, o.order_date) : Number(old.rate);
     const v = { ...old, ...Object.fromEntries(Object.entries(b).filter(([, x]) => x !== undefined)), currency, rate };
-    if (v.is_main) await assertNoOtherMain(db, id, [old.color_id], mid);
+    const matrix = await matrixOf(db, id);
+    assertInMatrix(matrix, { color_id: v.color_id, size_id: v.size_id ?? null });
+    if (v.is_main) assertMainUnique(matrix, [...(await mainsOf(db, id, [mid])), { color_id: v.color_id, size_id: v.size_id ?? null }]);
     await db.query(
       `UPDATE order_materials SET material_id = $2, supplier_id = $3, material_color_id = $4, color_code = $5, material_size = $6,
-              per_unit = $7, price = $8, currency = $9, rate = $10, from_us = $11, note = $12, is_main = $13 WHERE id = $1`,
-      [mid, v.material_id, v.supplier_id, v.material_color_id, v.color_code, v.material_size, v.per_unit, v.price, v.currency, v.rate, v.from_us, v.note, v.is_main],
+              per_unit = $7, price = $8, currency = $9, rate = $10, from_us = $11, note = $12, is_main = $13, size_id = $14 WHERE id = $1`,
+      [mid, v.material_id, v.supplier_id, v.material_color_id, v.color_code, v.material_size, v.per_unit, v.price, v.currency, v.rate, v.from_us, v.note, v.is_main, v.size_id ?? null],
     );
     const now = (await db.query('SELECT * FROM order_materials WHERE id = $1', [mid])).rows[0];
     await audit(db, ctx, 'order', id, 'material_update', old, now);
@@ -428,7 +535,7 @@ ordersRouter.delete('/:id/materials/:mid', async (req, res) => {
   res.json(data);
 });
 
-/** Bir rangdagi barcha xomashyo qatorlarini boshqa rang(lar)ga nusxalash (keyin farqlari tahrirlanadi). */
+/** Bir rangdagi barcha xomashyo qatorlarini boshqa rang(lar)ga nusxalash (razmer saqlanadi; keyin farqlari tahrirlanadi). */
 ordersRouter.post('/:id/materials/copy', async (req, res) => {
   const ctx = ctxOf(req);
   const id = idParam.parse(req.params.id);
@@ -436,24 +543,32 @@ ordersRouter.post('/:id/materials/copy', async (req, res) => {
   const data = await tx(async (db) => {
     const o = await orderOf(db, id, true);
     assertDraft(ctx, o);
-    const inMatrix = new Set(
-      (await db.query('SELECT DISTINCT color_id FROM order_items WHERE order_id = $1', [id])).rows.map((r) => r.color_id as number),
-    );
+    const matrix = await matrixOf(db, id);
     const targets = [...new Set(b.to_color_ids)].filter((c) => c !== b.from_color_id);
-    if (!targets.length || targets.some((c) => !inMatrix.has(c))) throw badRequest('Nusxa faqat jadvaldagi boshqa ranglarga olinadi');
+    if (!targets.length || targets.some((c) => !matrix.some((i) => i.color_id === c))) throw badRequest('Nusxa faqat jadvaldagi boshqa ranglarga olinadi');
     const src = (await db.query('SELECT * FROM order_materials WHERE order_id = $1 AND color_id = $2 ORDER BY sort, id', [id, b.from_color_id])).rows;
     if (!src.length) throw badRequest('Tanlangan rangda xomashyo qatorlari yo\'q');
     let n = 0;
+    let sort = (await db.query('SELECT coalesce(max(sort), 0) AS s FROM order_materials WHERE order_id = $1', [id])).rows[0].s;
+    const mains = await mainsOf(db, id);
     for (const to of targets) {
-      const base = (await db.query('SELECT coalesce(max(sort), 0) AS s FROM order_materials WHERE order_id = $1 AND color_id = $2', [id, to])).rows[0].s;
-      const hasMain = !!(await db.query('SELECT 1 FROM order_materials WHERE order_id = $1 AND color_id = $2 AND is_main', [id, to])).rowCount;
-      for (const [i, m] of src.entries()) {
-        await db.query(
-          `INSERT INTO order_materials (order_id, color_id, material_id, supplier_id, material_color_id, color_code, material_size,
-                                        per_unit, price, currency, rate, from_us, note, sort, is_main)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-          [id, to, m.material_id, m.supplier_id, m.material_color_id, m.color_code, m.material_size, m.per_unit, m.price, m.currency, m.rate, m.from_us, m.note, base + i + 1, m.is_main && !hasMain],
-        );
+      for (const m of src) {
+        // nusxa faqat shu rangda mavjud razmerlarga; asosiy belgisi to'qnashsa — oddiy qator bo'ladi
+        if (m.size_id != null && !matrix.some((i) => i.color_id === to && i.size_id === m.size_id)) continue;
+        const v = { color_id: to, size_id: m.size_id as number | null };
+        let main = !!m.is_main;
+        if (main) {
+          try {
+            assertMainUnique(matrix, [...mains, v]);
+            mains.push(v);
+          } catch {
+            main = false;
+          }
+        }
+        await db.query(INSERT_LINE, [
+          id, to, m.size_id, m.material_id, m.supplier_id, m.material_color_id, m.color_code, m.material_size,
+          m.per_unit, m.price, m.currency, m.rate, m.from_us, m.note, ++sort, main,
+        ]);
         n++;
       }
     }
@@ -500,8 +615,8 @@ ordersRouter.post('/:id/confirm', requireAction('orders.confirm'), async (req, r
     if (o.status !== 'draft') throw conflict('Faqat qoralama tasdiqlanadi');
     const d = await orderDetail(db, id);
     if (!d.items.length) throw badRequest('Razmer × rang jadvaliga miqdor kiriting');
-    const missing = d.by_color.filter((c) => !d.materials.some((m) => m.color_id === c.color_id)).map((c) => c.color_name);
-    if (missing.length) throw badRequest(`Xomashyo normasi kiritilmagan ranglar: ${missing.join(', ')}`);
+    const bare = d.warnings.find((w) => w.startsWith('Xomashyo kiritilmagan'));
+    if (bare) throw badRequest(bare);
     await db.query(`UPDATE orders SET status = 'confirmed', confirmed_by = $2, confirmed_at = now() WHERE id = $1`, [id, ctx.userId]);
     await audit(db, ctx, 'order', id, 'confirm', { status: 'draft' }, { status: 'confirmed', totals: d.totals });
     return orderDetail(db, id);
