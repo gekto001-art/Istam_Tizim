@@ -171,6 +171,10 @@ export interface OrderDetail {
 export type PurchaseStatus = 'negotiation' | 'rejected' | 'preparing' | 'in_transit' | 'arrived' | 'closed' | 'cancelled';
 export type PaymentStatus = 'unpaid' | 'advance' | 'partial' | 'paid';
 
+export type Stage = 'mato' | 'furnitura';
+/** Kelishilgan qatorlar holatlari (fakt hisobga olinadi) */
+export const AGREED: PurchaseStatus[] = ['preparing', 'in_transit', 'arrived', 'closed'];
+
 export interface SupplyOrderRow {
   id: number;
   partiya_no: string;
@@ -181,9 +185,9 @@ export interface SupplyOrderRow {
   producer_name: string | null;
   plan_qty: number;
   actual_qty: number | null;
-  mato_pos: number;
+  mato_lines: number;
   mato_agreed: number;
-  furnitura_pos: number;
+  furnitura_lines: number;
   furnitura_agreed: number;
 }
 
@@ -197,80 +201,118 @@ export interface SupplyNeed {
   material_name: string;
   material_code: string | null;
   unit: string;
+  supplier_id: number | null;
   supplier_name: string | null;
+  material_color_id: number | null;
   material_color_name: string | null;
   color_code: string | null;
   material_size: string | null;
   per_unit: string;
   price: string;
   currency: string;
+  rate: string;
+  is_main: boolean;
   plan_count: number;
   actual_count: number | null;
   qty: string | null;
-  ordered_po_id: number | null;
+  ordered_line_id: number | null;
+  ordered_status: PurchaseStatus | null;
 }
 
 export interface SupplyPlan {
-  order: { id: number; partiya_no: string; order_date: string; status: string; artikul: string | null; model: string | null; product_type_name: string; producer_name: string | null };
+  order: {
+    id: number;
+    partiya_no: string;
+    order_date: string;
+    status: string;
+    artikul: string | null;
+    model: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    product_type_name: string;
+    producer_name: string | null;
+  };
   colors: { color_id: number; color_name: string; plan_count: number; actual_count: number | null; main_material: string | null }[];
   mato: SupplyNeed[];
   furnitura: SupplyNeed[];
-  purchases: { id: number; stage: 'mato' | 'furnitura'; status: PurchaseStatus; payment_status: PaymentStatus; po_date: string; eta: string | null; supplier_name: string; lines: number }[];
   can: { mato: boolean; furnitura: boolean };
   reasons: { mato: string | null; furnitura: string | null };
 }
 
-export interface PurchaseRow {
-  id: number;
-  order_id: number;
-  partiya_no: string;
-  product_type_name: string;
-  supplier_name: string;
-  stage: 'mato' | 'furnitura';
-  status: PurchaseStatus;
-  payment_status: PaymentStatus;
-  po_date: string;
-  eta: string | null;
-  tracking: string | null;
-  manager: string | null;
-  lines: number;
-  amount_uzs: string | null;
-}
-
+/** Postavshik buyurtmasi qatori (Sheets: Postavshik Kelishuv / Tasdiqlangan buyurtmalar) */
 export interface PurchaseLine {
   id: number;
+  po_id: number;
+  created_at: string;
+  order_id: number;
+  partiya_no: string;
+  po_date: string;
+  stage: Stage;
+  supplier_id: number;
+  supplier_name: string;
+  product_type_name: string;
   material_id: number;
   material_name: string;
   material_code: string | null;
   unit: string;
+  material_color_id: number | null;
   material_color_name: string | null;
   color_code: string | null;
   material_size: string | null;
   plan_qty: string;
   price: string;
+  plan_amount: string;
   currency: string;
   rate: string;
+  status: PurchaseStatus;
+  payment_status: PaymentStatus;
+  eta: string | null;
+  tracking: string | null;
+  arrived_date: string | null;
+  manager: string | null;
+  note: string | null;
+  reject_reason: string | null;
   fact_qty: string | null;
   fact_price: string | null;
-  note: string | null;
-  plan_amount: string;
-  fact_amount: string | null;
-  amount_uzs: string;
-  sources: { color_name: string; plan_qty: string; per_unit: string; fact_qty: string | null; products: number | null }[];
+  fact_amount: string;
+  agreed_at: string | null;
+  agreed_by_name: string | null;
+  shipped_qty: string;
+  remaining_qty: string;
+  for_colors: string | null;
 }
 
-export interface PurchaseDetail {
-  po: PurchaseRow & {
-    note: string | null;
-    reject_reason: string | null;
-    arrived_date: string | null;
-    supplier_country: string | null;
-    artikul: string | null;
-    model: string | null;
-    agreed_by_name: string | null;
-    agreed_at: string | null;
-    created_by_name: string | null;
-  };
+export interface TrackingOrder {
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  lines: number;
+  remaining_qty: string;
+}
+
+export interface Shipment {
+  id: number;
+  created_at: string;
+  ship_date: string;
+  qty: string;
+  note: string | null;
+  partiya_no: string;
+  po_date: string;
+  supplier_name: string;
+  material_name: string;
+  material_code: string | null;
+  material_color_name: string | null;
+  color_code: string | null;
+  material_size: string | null;
+  price: string;
+  amount: string;
+  currency: string;
+  rate: string;
+  amount_uzs: string;
+  created_by_name: string | null;
+}
+
+export interface TrackingDetail {
   lines: PurchaseLine[];
-  totals: { plan_uzs: string | null; fact_uzs: string | null; all_fact: boolean };
+  shipments: Shipment[];
 }

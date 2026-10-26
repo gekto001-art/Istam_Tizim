@@ -54,7 +54,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); bor
 
 .form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-items: end; }
 .form.one { grid-template-columns: 1fr; }
-label.f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+label.f, div.f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+div.f > b, div.f > span.v { color: var(--ink); font-size: 13.5px; min-height: 34px; display: flex; align-items: center; }
 label.chk { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .err { color: var(--bad); font-size: 13px; }
 

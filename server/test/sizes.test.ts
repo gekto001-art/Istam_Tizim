@@ -114,21 +114,29 @@ describe('Ta\'minot: razmer bo\'yicha asosiy mato', () => {
       line('Seriy', null, ids.mat.tugma, 8, { price: 100 }), // Seriy: asosiy mato yo'q — son o'zgarmaydi
     ]);
     expect((await api().post(`/api/orders/${id}/confirm`).set(auth(innov))).status).toBe(200);
-    const po = (await api().post(`/api/purchases/orders/${id}/mato`).set(auth(taminot))).body.created[0];
-    const d = (await api().get(`/api/purchases/${po}`).set(auth(taminot))).body;
-    expect(d.lines).toHaveLength(1);
-    expect(d.lines[0].plan_qty).toBe('1012.800');
-    expect(d.lines[0].sources).toHaveLength(3);
+    // Xomashyo Zakaz: zakazdagi qiymatlar bilan YUBORISH
+    const sendStage = async (stage: 'mato' | 'furnitura') => {
+      const plan = (await api().get(`/api/purchases/orders/${id}`).set(auth(taminot))).body;
+      const rows = plan[stage].map((r: { order_material_id: number; supplier_id: number; qty: string; price: string; currency: string; rate: string }) => ({
+        order_material_id: r.order_material_id, supplier_id: r.supplier_id, qty: Number(r.qty), price: Number(r.price), currency: r.currency, rate: Number(r.rate),
+      }));
+      return api().post(`/api/purchases/orders/${id}/send`).set(auth(taminot)).send({ stage, rows });
+    };
+    expect((await sendStage('mato')).status).toBe(201);
+    const lines = (stage: string) => api().get(`/api/purchases/lines?order_id=${id}&stage=${stage}`).set(auth(taminot));
+    const d = (await lines('mato')).body;
+    expect(d).toHaveLength(1);
+    expect(d[0].plan_qty).toBe('1012.800');
+    expect(d[0].for_colors).toBe('Sini-oq');
     // nakladnoy: 1100 m (reja 1012,8) → har katakka ulush bo'yicha
-    await api().put(`/api/purchases/${po}/lines`).set(auth(taminot)).send({ lines: [{ id: d.lines[0].id, fact_qty: 1100 }] });
-    expect((await api().post(`/api/purchases/${po}/agree`).set(auth(taminot))).status).toBe(200);
+    expect((await api().put('/api/purchases/lines/kelishuv').set(auth(taminot)).send({ lines: [{ id: d[0].id, fact_qty: 1100, decision: 'agree' }] })).status).toBe(200);
     const items = (await api().get(`/api/orders/${id}`).set(auth(taminot))).body.items;
     const act = Object.fromEntries(items.map((i: { size_name: string; color_name: string; actual_qty: number }) => [`${i.size_name} ${i.color_name}`, i.actual_qty]));
     // 3--6: 1100 × 270/1012,8 = 293,247 m ÷ 0,5 = 586,5 → 587; 7--10: 396,209 ÷ 0,6 → 661; 11--14: 410,545 ÷ 0,7 → 587
     expect(act).toEqual({ '3--6 Sini-oq': 587, '7--10 Sini-oq': 661, '11--14 Sini-oq': 587, '3--6 Seriy': 380, '11--14 Seriy': 380 });
     // furnitura: tugma (587 + 661 + 587) × 8 = 14 680 va Seriy 760 × 8 = 6 080 → bitta qatorda 20 760
-    const f = (await api().post(`/api/purchases/orders/${id}/furnitura`).set(auth(taminot))).body.created[0];
-    const fl = (await api().get(`/api/purchases/${f}`).set(auth(taminot))).body.lines;
+    expect((await sendStage('furnitura')).status).toBe(201);
+    const fl = (await lines('furnitura')).body;
     expect(fl.map((l: { plan_qty: string }) => l.plan_qty)).toEqual(['20760.000']);
   });
 });

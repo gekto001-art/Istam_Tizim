@@ -7,9 +7,9 @@ type Stage = 'ready' | 'next' | 'plan';
 const MODULES: { name: string; what: string; stage: Stage }[] = [
   { name: 'Asos', what: 'Kirish, rollar, foydalanuvchilar, audit, zaxira nusxa', stage: 'ready' },
   { name: 'Innovatsion bo\'lim', what: 'Zakaz (partiya): razmer × rang, rang bo\'yicha xomashyo normasi, ish narxlari, tannarx', stage: 'ready' },
-  { name: 'Ta\'minot: zakaz va kelishuv', what: 'Avval mato → nakladnoy (fakt) → son qayta hisob → furnitura zakazi', stage: 'ready' },
-  { name: 'Tracking', what: 'Buyurtma va to\'lov statusi, ETA, yo\'lga chiqish va qoldiq', stage: 'next' },
-  { name: 'Xomashyo skladi', what: 'Prixod, bichuvga peremesheniya, vozvrat', stage: 'plan' },
+  { name: 'Ta\'minot: zakaz va kelishuv', what: 'Xomashyo zakaz (avval mato) → Postavshik kelishuv (fakt, tasdiqlash / rad etish) → son qayta hisob → furnitura', stage: 'ready' },
+  { name: 'Tracking', what: 'Status o\'zgartirish: buyurtma va to\'lov statusi, tracking, ETA, yo\'lga chiqqan miqdor va qoldiq', stage: 'ready' },
+  { name: 'Xomashyo skladi', what: 'Prixod, bichuvga peremesheniya, vozvrat', stage: 'next' },
   { name: 'Bichuv (kroy)', what: 'Bichish, tsexga peremesheniya', stage: 'plan' },
   { name: 'Tsex', what: 'Kunlik ishlar, ishlab chiqarishni yakunlash (shim, ko\'ylak)', stage: 'plan' },
   { name: 'OTK', what: 'Sifat nazorati, brak', stage: 'plan' },

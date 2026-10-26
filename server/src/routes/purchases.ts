@@ -4,27 +4,36 @@ import { ctxOf, requireAction } from '../auth/context.js';
 import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
 import { AppError, badRequest, conflict, notFound } from '../lib/errors.js';
+import { can } from '../lib/permissions.js';
 import { decimal, idParam, optText } from '../lib/util.js';
-import { AGREED, createPurchases, recomputeActuals, supplyPlan } from '../services/supply.js';
+import { AGREED, recomputeActuals, sendPurchases, supplyPlan } from '../services/supply.js';
 
 /**
- * Ta'minot: xomashyo zakazi (mato → furnitura) va postavshik kelishuvi (nakladnoy).
- * Sheets "Zakaz&Tracking": Xomashyo Zakaz, Postavshik Kelishuv.
+ * Ta'minot — Sheets "Zakaz&Tracking" varaqlari bo'yicha:
+ *  Xomashyo Zakaz (yuborish), Postavshik Kelishuv (qator bo'yicha fakt, tasdiqlash / rad etish),
+ *  Tasdiqlangan buyurtmalar, Status o'zgartirish (status, to'lov, tracking, yo'lga chiqish).
+ * "Buyurtma ID" — partiya raqami.
  */
 export const purchasesRouter = Router();
 purchasesRouter.use(requireAction('purchase.read'));
 
-// ---------- Xomashyo zakazi: tasdiqlangan zakazlar va ta'minot holati ----------
+const CURRENCY = z.enum(['UZS', 'USD', 'CNY', 'EUR', 'RUB']);
+const PAYMENT = z.enum(['unpaid', 'advance', 'partial', 'paid']);
+const date = z.coerce.date().transform((d) => d.toISOString().slice(0, 10));
+
+// ---------- Xomashyo Zakaz ----------
 purchasesRouter.get('/orders', async (_req, res) => {
   const rows = (
     await pool.query(
-      `SELECT o.id, o.partiya_no, o.order_date, o.artikul, o.model, pt.name AS product_type_name, p.name AS producer_name,
+      `WITH ln AS (
+         SELECT p.order_id, p.stage, l.status FROM purchase_orders p JOIN purchase_order_lines l ON l.po_id = p.id WHERE l.status <> 'cancelled')
+       SELECT o.id, o.partiya_no, o.order_date, o.artikul, o.model, pt.name AS product_type_name, p.name AS producer_name,
               (SELECT coalesce(sum(qty), 0) FROM order_items i WHERE i.order_id = o.id) AS plan_qty,
               (SELECT sum(actual_qty) FROM order_items i WHERE i.order_id = o.id HAVING bool_and(actual_qty IS NOT NULL)) AS actual_qty,
-              (SELECT count(*) FROM purchase_orders x WHERE x.order_id = o.id AND x.stage = 'mato' AND x.status <> 'cancelled') AS mato_pos,
-              (SELECT count(*) FROM purchase_orders x WHERE x.order_id = o.id AND x.stage = 'mato' AND x.status = ANY($1::text[])) AS mato_agreed,
-              (SELECT count(*) FROM purchase_orders x WHERE x.order_id = o.id AND x.stage = 'furnitura' AND x.status <> 'cancelled') AS furnitura_pos,
-              (SELECT count(*) FROM purchase_orders x WHERE x.order_id = o.id AND x.stage = 'furnitura' AND x.status = ANY($1::text[])) AS furnitura_agreed
+              (SELECT count(*) FROM ln WHERE ln.order_id = o.id AND ln.stage = 'mato') AS mato_lines,
+              (SELECT count(*) FROM ln WHERE ln.order_id = o.id AND ln.stage = 'mato' AND ln.status = ANY($1::text[])) AS mato_agreed,
+              (SELECT count(*) FROM ln WHERE ln.order_id = o.id AND ln.stage = 'furnitura') AS furnitura_lines,
+              (SELECT count(*) FROM ln WHERE ln.order_id = o.id AND ln.stage = 'furnitura' AND ln.status = ANY($1::text[])) AS furnitura_agreed
          FROM orders o JOIN product_types pt ON pt.id = o.product_type_id LEFT JOIN producers p ON p.id = o.producer_id
         WHERE o.status = 'confirmed'
         ORDER BY o.order_date DESC, o.id DESC LIMIT 500`,
@@ -39,130 +48,90 @@ purchasesRouter.get('/orders/:orderId', async (req, res) => {
   res.json(await tx((db) => supplyPlan(db, orderId)));
 });
 
-/** Mato yoki furnitura buyurtmalarini yaratish (postavshik bo'yicha). */
-purchasesRouter.post('/orders/:orderId/:stage', requireAction('purchase.write'), async (req, res) => {
+/** "YUBORISH": tanlangan ehtiyoj qatorlari postavshik(lar)ga — Postavshik Kelishuv'ga tushadi. */
+purchasesRouter.post('/orders/:orderId/send', requireAction('purchase.write'), async (req, res) => {
   const ctx = ctxOf(req);
   const orderId = idParam.parse(req.params.orderId);
-  const stage = z.enum(['mato', 'furnitura']).parse(req.params.stage);
+  const b = z
+    .object({
+      stage: z.enum(['mato', 'furnitura']),
+      rows: z
+        .array(
+          z.object({
+            order_material_id: idParam,
+            supplier_id: idParam,
+            qty: decimal.positive().max(1e9),
+            price: decimal.min(0).max(1e12),
+            currency: CURRENCY,
+            rate: decimal.positive().max(1e9).nullish(),
+            payment_status: PAYMENT.optional(),
+            eta: date.nullish(),
+            manager: optText(100),
+            note: optText(500),
+          }),
+        )
+        .min(1)
+        .max(1000),
+    })
+    .parse(req.body);
   const data = await tx(async (db) => {
-    const created = await createPurchases(db, ctx, orderId, stage);
+    const created = await sendPurchases(db, ctx, orderId, b.stage, b.rows);
     return { created, plan: await supplyPlan(db, orderId) };
   });
   res.status(201).json(data);
 });
 
-// ---------- Buyurtmalar ----------
-const STATUSES = ['negotiation', 'rejected', 'preparing', 'in_transit', 'arrived', 'closed', 'cancelled'] as const;
+// ---------- Buyurtma qatorlari (Postavshik Kelishuv / Tasdiqlangan buyurtmalar) ----------
+const LINE_SELECT = `
+  SELECT l.id, l.po_id, l.created_at, p.order_id, o.partiya_no, p.po_date, p.stage, p.supplier_id, s.name AS supplier_name,
+         pt.name AS product_type_name, l.material_id, mt.name AS material_name, mt.code AS material_code, mt.unit,
+         l.material_color_id, mc.name AS material_color_name, l.color_code, l.material_size,
+         l.plan_qty, l.price, round(l.plan_qty * l.price, 2) AS plan_amount, l.currency, l.rate,
+         l.status, l.payment_status, l.eta, l.tracking, l.arrived_date, l.manager, l.note, l.reject_reason,
+         l.fact_qty, l.fact_price,
+         round(coalesce(l.fact_qty, l.plan_qty) * coalesce(l.fact_price, l.price), 2) AS fact_amount,
+         l.agreed_at, ua.full_name AS agreed_by_name,
+         coalesce(sh.qty, 0) AS shipped_qty,
+         round(coalesce(l.fact_qty, l.plan_qty) - coalesce(sh.qty, 0), 3) AS remaining_qty,
+         (SELECT string_agg(DISTINCT c.name, ', ') FROM purchase_line_sources ps JOIN order_materials m ON m.id = ps.order_material_id
+            JOIN colors c ON c.id = m.color_id WHERE ps.line_id = l.id) AS for_colors
+    FROM purchase_order_lines l
+    JOIN purchase_orders p ON p.id = l.po_id
+    JOIN orders o ON o.id = p.order_id
+    JOIN product_types pt ON pt.id = o.product_type_id
+    JOIN suppliers s ON s.id = p.supplier_id
+    JOIN materials mt ON mt.id = l.material_id
+    LEFT JOIN colors mc ON mc.id = l.material_color_id
+    LEFT JOIN users ua ON ua.id = l.agreed_by
+    LEFT JOIN LATERAL (SELECT sum(x.qty) AS qty FROM purchase_shipments x WHERE x.line_id = l.id) sh ON true`;
 
-purchasesRouter.get('/', async (req, res) => {
+purchasesRouter.get('/lines', async (req, res) => {
   const q = z
     .object({
-      status: z.enum(STATUSES).optional(),
-      stage: z.enum(['mato', 'furnitura']).optional(),
+      status: z.string().max(200).optional(), // vergul bilan: negotiation,rejected
       order_id: idParam.optional(),
-      limit: z.coerce.number().int().min(1).max(1000).default(300),
+      stage: z.enum(['mato', 'furnitura']).optional(),
+      limit: z.coerce.number().int().min(1).max(2000).default(1000),
     })
     .parse(req.query);
+  const statuses = q.status ? q.status.split(',').map((x) => x.trim()).filter(Boolean) : null;
   const rows = (
     await pool.query(
-      `SELECT p.*, s.name AS supplier_name, o.partiya_no, pt.name AS product_type_name,
-              (SELECT count(*) FROM purchase_order_lines l WHERE l.po_id = p.id) AS lines,
-              (SELECT sum(round(coalesce(l.fact_qty, l.plan_qty) * coalesce(l.fact_price, l.price) * l.rate, 2))
-                 FROM purchase_order_lines l WHERE l.po_id = p.id) AS amount_uzs
-         FROM purchase_orders p JOIN suppliers s ON s.id = p.supplier_id
-         JOIN orders o ON o.id = p.order_id JOIN product_types pt ON pt.id = o.product_type_id
-        WHERE ($1::text IS NULL OR p.status = $1) AND ($2::text IS NULL OR p.stage = $2) AND ($3::int IS NULL OR p.order_id = $3)
-        ORDER BY p.id DESC LIMIT $4`,
-      [q.status ?? null, q.stage ?? null, q.order_id ?? null, q.limit],
+      `${LINE_SELECT}
+        WHERE ($1::text[] IS NULL OR l.status = ANY($1)) AND ($2::int IS NULL OR p.order_id = $2) AND ($3::text IS NULL OR p.stage = $3)
+        ORDER BY l.id DESC LIMIT $4`,
+      [statuses, q.order_id ?? null, q.stage ?? null, q.limit],
     )
   ).rows;
   res.json(rows);
 });
 
-export async function purchaseDetail(db: Db | typeof pool, id: number) {
-  const po = (
-    await db.query(
-      `SELECT p.*, s.name AS supplier_name, s.country AS supplier_country, o.partiya_no, o.artikul, o.model,
-              pt.name AS product_type_name, ua.full_name AS agreed_by_name, uc.full_name AS created_by_name
-         FROM purchase_orders p JOIN suppliers s ON s.id = p.supplier_id
-         JOIN orders o ON o.id = p.order_id JOIN product_types pt ON pt.id = o.product_type_id
-         LEFT JOIN users ua ON ua.id = p.agreed_by LEFT JOIN users uc ON uc.id = p.created_by
-        WHERE p.id = $1`,
-      [id],
-    )
-  ).rows[0];
-  if (!po) throw notFound('Buyurtma');
-  const lines = (
-    await db.query(
-      `SELECT l.*, mt.name AS material_name, mt.code AS material_code, mt.unit, mc.name AS material_color_name,
-              round(l.plan_qty * l.price, 2) AS plan_amount,
-              round(l.fact_qty * coalesce(l.fact_price, l.price), 2) AS fact_amount,
-              round(coalesce(l.fact_qty, l.plan_qty) * coalesce(l.fact_price, l.price) * l.rate, 2) AS amount_uzs,
-              coalesce((SELECT jsonb_agg(jsonb_build_object('color_name', c.name, 'plan_qty', s.plan_qty, 'per_unit', m.per_unit,
-                         'fact_qty', round(l.fact_qty * s.plan_qty / l.plan_qty, 3),
-                         'products', CASE WHEN m.is_main AND l.fact_qty IS NOT NULL
-                                          THEN ceil(round(l.fact_qty * s.plan_qty / l.plan_qty, 3) / m.per_unit) END)
-                         ORDER BY c.name)
-                          FROM purchase_line_sources s JOIN order_materials m ON m.id = s.order_material_id JOIN colors c ON c.id = m.color_id
-                         WHERE s.line_id = l.id), '[]') AS sources
-         FROM purchase_order_lines l JOIN materials mt ON mt.id = l.material_id LEFT JOIN colors mc ON mc.id = l.material_color_id
-        WHERE l.po_id = $1 ORDER BY l.id`,
-      [id],
-    )
-  ).rows;
-  const totals = (
-    await db.query(
-      `SELECT sum(round(plan_qty * price * rate, 2)) AS plan_uzs,
-              sum(round(fact_qty * coalesce(fact_price, price) * rate, 2)) AS fact_uzs,
-              bool_and(fact_qty IS NOT NULL) AS all_fact
-         FROM purchase_order_lines WHERE po_id = $1`,
-      [id],
-    )
-  ).rows[0];
-  return { po, lines, totals };
-}
-
-async function poOf(db: Db, id: number) {
-  const p = (await db.query('SELECT * FROM purchase_orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
-  if (!p) throw notFound('Buyurtma');
-  return p;
-}
-
-purchasesRouter.get('/:id', async (req, res) => {
-  res.json(await purchaseDetail(pool, idParam.parse(req.params.id)));
-});
-
-/** Sarlavha: menejer, sana, ETA, tracking, izoh. */
-purchasesRouter.patch('/:id', requireAction('purchase.write'), async (req, res) => {
+/**
+ * Postavshik Kelishuv: fakt miqdor/narx saqlanadi; "tasdiqlash" — qator kelishiladi (Tayyorlanmoqda),
+ * "rad etish" — rad etiladi (sababi izohda). Mato tasdiqlansa zakazdagi son qayta hisoblanadi.
+ */
+purchasesRouter.put('/lines/kelishuv', async (req, res) => {
   const ctx = ctxOf(req);
-  const id = idParam.parse(req.params.id);
-  const b = z
-    .object({
-      po_date: z.coerce.date().transform((d) => d.toISOString().slice(0, 10)).optional(),
-      manager: optText(100),
-      eta: z.coerce.date().transform((d) => d.toISOString().slice(0, 10)).nullish(),
-      tracking: optText(200),
-      note: optText(1000),
-    })
-    .parse(req.body) as Record<string, unknown>;
-  const data = await tx(async (db) => {
-    const old = await poOf(db, id);
-    if (old.status === 'closed' || old.status === 'cancelled') throw conflict('Yopilgan yoki bekor qilingan buyurtma o\'zgarmaydi');
-    const keys = ['po_date', 'manager', 'eta', 'tracking', 'note'].filter((k) => b[k] !== undefined);
-    if (keys.length) {
-      await db.query(`UPDATE purchase_orders SET ${keys.map((k, i) => `${k} = $${i + 2}`).join(', ')} WHERE id = $1`, [id, ...keys.map((k) => b[k] ?? null)]);
-    }
-    const d = await purchaseDetail(db, id);
-    await audit(db, ctx, 'purchase', id, 'update', old, d.po);
-    return d;
-  });
-  res.json(data);
-});
-
-// ---------- Postavshik kelishuvi: nakladnoy bo'yicha fakt miqdor va narx ----------
-purchasesRouter.put('/:id/lines', requireAction('purchase.write'), async (req, res) => {
-  const ctx = ctxOf(req);
-  const id = idParam.parse(req.params.id);
   const { lines } = z
     .object({
       lines: z
@@ -171,86 +140,185 @@ purchasesRouter.put('/:id/lines', requireAction('purchase.write'), async (req, r
             id: idParam,
             fact_qty: decimal.min(0).max(1e9).nullish(),
             fact_price: decimal.min(0).max(1e12).nullish(),
-            note: optText(300),
+            decision: z.enum(['agree', 'reject']).nullish(),
+            note: optText(500),
           }),
         )
         .min(1)
-        .max(500),
+        .max(1000),
     })
     .parse(req.body);
+  // fakt va izoh kiritish — ta'minot; tasdiqlash / rad etish — tasdiqlash huquqi (rahbar ham)
+  const edits = lines.some((l) => l.fact_qty !== undefined || l.fact_price !== undefined || (l.note && l.decision !== 'reject'));
+  if (edits && !can(ctx.role, 'purchase.write')) throw new AppError(403, 'FORBIDDEN', 'Nakladnoy kiritish uchun ruxsat yo\'q');
+  if (lines.some((l) => l.decision) && !can(ctx.role, 'purchase.approve')) throw new AppError(403, 'FORBIDDEN', 'Kelishuvni tasdiqlash uchun ruxsat yo\'q');
   const data = await tx(async (db) => {
-    const p = await poOf(db, id);
-    if (p.status !== 'negotiation' && p.status !== 'rejected') {
-      throw new AppError(409, 'PURCHASE_LOCKED', 'Kelishilgan buyurtmaning nakladnoyi o\'zgarmaydi');
-    }
-    const old = (await db.query('SELECT id, fact_qty, fact_price, note FROM purchase_order_lines WHERE po_id = $1 ORDER BY id', [id])).rows;
+    const touched = new Set<number>();
+    const result = { saved: 0, agreed: 0, rejected: 0 };
     for (const l of lines) {
-      const r = await db.query(
-        `UPDATE purchase_order_lines SET fact_qty = $3, fact_price = $4, note = coalesce($5, note) WHERE id = $1 AND po_id = $2`,
-        [l.id, id, l.fact_qty ?? null, l.fact_price ?? null, l.note],
+      const old = (
+        await db.query('SELECT l.*, p.order_id, p.stage FROM purchase_order_lines l JOIN purchase_orders p ON p.id = l.po_id WHERE l.id = $1 FOR UPDATE OF l', [l.id])
+      ).rows[0];
+      if (!old) throw notFound('Buyurtma qatori');
+      if (old.status !== 'negotiation' && old.status !== 'rejected') {
+        throw new AppError(409, 'PURCHASE_LOCKED', 'Kelishilgan yoki bekor qilingan qator o\'zgarmaydi');
+      }
+      let status = old.status;
+      let factQty = l.fact_qty === undefined ? old.fact_qty : l.fact_qty;
+      let factPrice = l.fact_price === undefined ? old.fact_price : l.fact_price;
+      let reason = old.reject_reason;
+      if (l.decision === 'agree') {
+        status = 'preparing';
+        factQty ??= old.plan_qty; // fakt kiritilmasa — zakaz qilingan miqdor
+        factPrice ??= old.price;
+        reason = null;
+        result.agreed++;
+        if (old.stage === 'mato') touched.add(old.order_id);
+      } else if (l.decision === 'reject') {
+        status = 'rejected';
+        reason = l.note || old.note || 'Rad etildi';
+        result.rejected++;
+      } else result.saved++;
+      await db.query(
+        `UPDATE purchase_order_lines SET fact_qty = $2, fact_price = $3, status = $4, reject_reason = $5, note = coalesce($6, note),
+                agreed_by = CASE WHEN $4 = 'preparing' THEN $7 ELSE agreed_by END,
+                agreed_at = CASE WHEN $4 = 'preparing' THEN now() ELSE agreed_at END
+          WHERE id = $1`,
+        [l.id, factQty, factPrice, status, reason, l.decision === 'reject' ? null : l.note, ctx.userId],
       );
-      if (!r.rowCount) throw notFound('Buyurtma qatori');
+      await audit(db, ctx, 'purchase_line', l.id, l.decision ?? 'nakladnoy', { status: old.status, fact_qty: old.fact_qty, fact_price: old.fact_price }, { status, fact_qty: factQty, fact_price: factPrice, reason });
     }
-    // rad etilgan buyurtma tuzatilsa — yana kelishuvga qaytadi
-    if (p.status === 'rejected') await db.query(`UPDATE purchase_orders SET status = 'negotiation', reject_reason = NULL WHERE id = $1`, [id]);
-    const d = await purchaseDetail(db, id);
-    await audit(db, ctx, 'purchase', id, 'nakladnoy', old, d.lines.map((l) => ({ id: l.id, fact_qty: l.fact_qty, fact_price: l.fact_price, note: l.note })));
-    return d;
+    for (const orderId of touched) await recomputeActuals(db, orderId);
+    return result;
   });
   res.json(data);
 });
 
-/** Kelishuvni tasdiqlash: fakt miqdorlar majburiy; mato bo'lsa mahsulot soni qayta hisoblanadi. */
-purchasesRouter.post('/:id/agree', requireAction('purchase.approve'), async (req, res) => {
+/** Bekor qilish (yo'lga chiqmagan qator). Kelishilgan mato bekor qilinsa, furnitura yuborilmagan bo'lishi kerak. */
+purchasesRouter.post('/lines/:id/cancel', requireAction('purchase.write'), async (req, res) => {
   const ctx = ctxOf(req);
   const id = idParam.parse(req.params.id);
-  const data = await tx(async (db) => {
-    const p = await poOf(db, id);
-    if (p.status !== 'negotiation') throw conflict(p.status === 'rejected' ? 'Rad etilgan buyurtmani avval tuzating' : 'Buyurtma kelishuv bosqichida emas');
-    const missing = (await db.query('SELECT count(*) AS n FROM purchase_order_lines WHERE po_id = $1 AND fact_qty IS NULL', [id])).rows[0].n;
-    if (missing > 0) throw badRequest(`${missing} ta qatorda nakladnoy bo'yicha fakt miqdor kiritilmagan`);
-    await db.query('UPDATE purchase_order_lines SET fact_price = price WHERE po_id = $1 AND fact_price IS NULL', [id]);
-    await db.query(`UPDATE purchase_orders SET status = 'preparing', agreed_by = $2, agreed_at = now() WHERE id = $1`, [id, ctx.userId]);
-    if (p.stage === 'mato') await recomputeActuals(db, p.order_id);
-    const d = await purchaseDetail(db, id);
-    await audit(db, ctx, 'purchase', id, 'agree', { status: p.status }, { status: 'preparing', fact_uzs: d.totals.fact_uzs });
-    return d;
-  });
-  res.json(data);
-});
-
-purchasesRouter.post('/:id/reject', requireAction('purchase.approve'), async (req, res) => {
-  const ctx = ctxOf(req);
-  const id = idParam.parse(req.params.id);
-  const { reason } = z.object({ reason: z.string().trim().min(2, 'Sababini yozing').max(500) }).parse(req.body);
-  const data = await tx(async (db) => {
-    const p = await poOf(db, id);
-    if (p.status !== 'negotiation') throw conflict('Faqat kelishuvdagi buyurtma rad etiladi');
-    await db.query(`UPDATE purchase_orders SET status = 'rejected', reject_reason = $2 WHERE id = $1`, [id, reason]);
-    const d = await purchaseDetail(db, id);
-    await audit(db, ctx, 'purchase', id, 'reject', { status: p.status }, { status: 'rejected', reason });
-    return d;
-  });
-  res.json(data);
-});
-
-/** Bekor qilish (yo'lga chiqmagan buyurtma). Kelishilgan mato bekor qilinsa, furnitura bo'lmasligi kerak. */
-purchasesRouter.post('/:id/cancel', requireAction('purchase.write'), async (req, res) => {
-  const ctx = ctxOf(req);
-  const id = idParam.parse(req.params.id);
-  const data = await tx(async (db) => {
-    const p = await poOf(db, id);
-    if (!['negotiation', 'rejected', 'preparing'].includes(p.status)) throw conflict('Yo\'lga chiqqan yoki yopilgan buyurtmani bekor qilib bo\'lmaydi');
-    if (p.stage === 'mato' && p.status === 'preparing') {
-      const f = (await db.query(`SELECT count(*) AS n FROM purchase_orders WHERE order_id = $1 AND stage = 'furnitura' AND status <> 'cancelled'`, [p.order_id]))
-        .rows[0].n;
-      if (f > 0) throw conflict('Bu zakaz bo\'yicha furnitura buyurtmasi bor — avval uni bekor qiling');
+  await tx(async (db) => {
+    const l = (
+      await db.query('SELECT l.*, p.order_id, p.stage FROM purchase_order_lines l JOIN purchase_orders p ON p.id = l.po_id WHERE l.id = $1 FOR UPDATE OF l', [id])
+    ).rows[0];
+    if (!l) throw notFound('Buyurtma qatori');
+    if (!['negotiation', 'rejected', 'preparing'].includes(l.status)) throw conflict('Yo\'lga chiqqan yoki yopilgan qatorni bekor qilib bo\'lmaydi');
+    if ((await db.query('SELECT 1 FROM purchase_shipments WHERE line_id = $1 LIMIT 1', [id])).rowCount) throw conflict('Bu qator bo\'yicha yo\'lga chiqish bor');
+    if (l.stage === 'mato' && l.status === 'preparing') {
+      const f = (
+        await db.query(
+          `SELECT count(*) AS n FROM purchase_order_lines x JOIN purchase_orders p ON p.id = x.po_id
+            WHERE p.order_id = $1 AND p.stage = 'furnitura' AND x.status <> 'cancelled'`,
+          [l.order_id],
+        )
+      ).rows[0].n;
+      if (f > 0) throw conflict('Bu zakaz bo\'yicha furnitura yuborilgan — avval uni bekor qiling');
     }
-    await db.query(`UPDATE purchase_orders SET status = 'cancelled' WHERE id = $1`, [id]);
-    if (p.stage === 'mato') await recomputeActuals(db, p.order_id);
-    const d = await purchaseDetail(db, id);
-    await audit(db, ctx, 'purchase', id, 'cancel', { status: p.status }, { status: 'cancelled' });
-    return d;
+    await db.query(`UPDATE purchase_order_lines SET status = 'cancelled' WHERE id = $1`, [id]);
+    if (l.stage === 'mato') await recomputeActuals(db, l.order_id);
+    await audit(db, ctx, 'purchase_line', id, 'cancel', { status: l.status }, { status: 'cancelled' });
+  });
+  res.status(204).end();
+});
+
+// ---------- Status o'zgartirish ----------
+const TRACK_STATUSES = ['preparing', 'in_transit', 'arrived', 'closed'] as const;
+
+/** Buyurtma ID ro'yxati: kelishilgan, yopilmagan qatorlari bor partiyalar */
+purchasesRouter.get('/tracking', async (_req, res) => {
+  const rows = (
+    await pool.query(
+      `SELECT o.id AS order_id, o.partiya_no, pt.name AS product_type_name, count(*) AS lines,
+              sum(round(coalesce(l.fact_qty, l.plan_qty) - coalesce((SELECT sum(x.qty) FROM purchase_shipments x WHERE x.line_id = l.id), 0), 3)) AS remaining_qty
+         FROM purchase_order_lines l JOIN purchase_orders p ON p.id = l.po_id JOIN orders o ON o.id = p.order_id
+         JOIN product_types pt ON pt.id = o.product_type_id
+        WHERE l.status = ANY($1::text[]) AND l.status <> 'closed'
+        GROUP BY o.id, o.partiya_no, pt.name ORDER BY o.id DESC`,
+      [AGREED],
+    )
+  ).rows;
+  res.json(rows);
+});
+
+async function trackingDetail(db: Db | typeof pool, orderId: number) {
+  const lines = (
+    await db.query(`${LINE_SELECT} WHERE p.order_id = $1 AND l.status = ANY($2::text[]) ORDER BY p.stage DESC, s.name, mt.name, l.id`, [orderId, AGREED])
+  ).rows;
+  const shipments = (
+    await db.query(
+      `SELECT x.id, x.created_at, x.ship_date, x.qty, x.note, o.partiya_no, p.po_date, s.name AS supplier_name, mt.name AS material_name,
+              mt.code AS material_code, mc.name AS material_color_name, l.color_code, l.material_size,
+              coalesce(l.fact_price, l.price) AS price, round(x.qty * coalesce(l.fact_price, l.price), 2) AS amount, l.currency, l.rate,
+              round(x.qty * coalesce(l.fact_price, l.price) * l.rate, 2) AS amount_uzs, u.full_name AS created_by_name
+         FROM purchase_shipments x JOIN purchase_order_lines l ON l.id = x.line_id JOIN purchase_orders p ON p.id = l.po_id
+         JOIN orders o ON o.id = p.order_id JOIN suppliers s ON s.id = p.supplier_id JOIN materials mt ON mt.id = l.material_id
+         LEFT JOIN colors mc ON mc.id = l.material_color_id LEFT JOIN users u ON u.id = x.created_by
+        WHERE p.order_id = $1 ORDER BY x.ship_date DESC, x.id DESC`,
+      [orderId],
+    )
+  ).rows;
+  return { lines, shipments };
+}
+
+purchasesRouter.get('/tracking/:orderId', async (req, res) => {
+  res.json(await trackingDetail(pool, idParam.parse(req.params.orderId)));
+});
+
+/**
+ * Sheets "Status o'zgartirish": Buyurtma ID tanlanadi; buyurtma statusi, to'lov statusi va tracking majburiy;
+ * yo'lga chiqqan miqdor kiritilsa — yo'lga chiqish sanasi majburiy va miqdor qoldiqdan oshmaydi.
+ * To'lov va tracking partiyaning barcha kelishilgan qatorlariga, status — yo'lga chiqqan qatorlarga (miqdor kiritilmasa hammasiga).
+ */
+purchasesRouter.post('/tracking/:orderId', requireAction('purchase.write'), async (req, res) => {
+  const ctx = ctxOf(req);
+  const orderId = idParam.parse(req.params.orderId);
+  const b = z
+    .object({
+      status: z.enum(TRACK_STATUSES, { message: 'Buyurtma statusini tanlang' }),
+      payment_status: PAYMENT,
+      tracking: z.string().trim().min(1, 'Trackingni tanlang').max(200),
+      ship_date: date.nullish(),
+      eta: date.nullish(),
+      arrived_date: date.nullish(),
+      shipments: z.array(z.object({ line_id: idParam, qty: decimal.positive().max(1e9) })).max(1000).default([]),
+    })
+    .parse(req.body);
+  if (b.shipments.length && !b.ship_date) throw badRequest('Yo\'lga chiqish sanasini tanlang');
+  const data = await tx(async (db) => {
+    const lines = (
+      await db.query(
+        `SELECT l.*, round(coalesce(l.fact_qty, l.plan_qty) - coalesce((SELECT sum(x.qty) FROM purchase_shipments x WHERE x.line_id = l.id), 0), 3) AS remaining
+           FROM purchase_order_lines l JOIN purchase_orders p ON p.id = l.po_id
+          WHERE p.order_id = $1 AND l.status = ANY($2::text[]) FOR UPDATE OF l`,
+        [orderId, AGREED],
+      )
+    ).rows;
+    if (!lines.length) throw notFound('Kelishilgan buyurtma');
+    const byId = new Map(lines.map((l) => [l.id as number, l]));
+    for (const s of b.shipments) {
+      const l = byId.get(s.line_id);
+      if (!l) throw badRequest('Qator bu buyurtmaga tegishli emas');
+      if (s.qty > Number(l.remaining) + 1e-9) throw badRequest('Yo\'lga chiqqan miqdor qoldiqdan ko\'p');
+    }
+    const shipped = new Set(b.shipments.map((s) => s.line_id));
+    const statusTargets = shipped.size ? lines.filter((l) => shipped.has(l.id)) : lines;
+    const old = lines.map((l) => ({ id: l.id, status: l.status, payment_status: l.payment_status, tracking: l.tracking }));
+    await db.query(
+      `UPDATE purchase_order_lines SET payment_status = $2, tracking = $3, eta = coalesce($4, eta) WHERE id = ANY($1::int[])`,
+      [lines.map((l) => l.id), b.payment_status, b.tracking, b.eta ?? null],
+    );
+    await db.query(
+      `UPDATE purchase_order_lines SET status = $2,
+              arrived_date = CASE WHEN $2 IN ('arrived', 'closed') THEN coalesce(arrived_date, $3::date, current_date) ELSE arrived_date END
+        WHERE id = ANY($1::int[])`,
+      [statusTargets.map((l) => l.id), b.status, b.arrived_date ?? null],
+    );
+    for (const s of b.shipments) {
+      await db.query('INSERT INTO purchase_shipments (line_id, ship_date, qty, created_by) VALUES ($1, $2, $3, $4)', [s.line_id, b.ship_date, s.qty, ctx.userId]);
+    }
+    await audit(db, ctx, 'purchase_tracking', orderId, 'update', old, { ...b });
+    return trackingDetail(db, orderId);
   });
   res.json(data);
 });

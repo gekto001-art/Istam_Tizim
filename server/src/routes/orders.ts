@@ -708,8 +708,13 @@ ordersRouter.put('/:id/works', async (req, res) => {
 
 /** Ta'minot buyurtmasi berilgan zakazni o'zgartirib bo'lmaydi (avval buyurtmalarni bekor qilish kerak). */
 async function assertNoPurchases(db: Db, orderId: number) {
-  const n = (await db.query("SELECT count(*) AS n FROM purchase_orders WHERE order_id = $1 AND status <> 'cancelled'", [orderId])).rows[0].n;
-  if (n > 0) throw conflict(`Bu zakaz bo'yicha ${n} ta ta'minot buyurtmasi bor — avval ularni bekor qiling`);
+  const n = (
+    await db.query(
+      "SELECT count(*) AS n FROM purchase_order_lines l JOIN purchase_orders p ON p.id = l.po_id WHERE p.order_id = $1 AND l.status <> 'cancelled'",
+      [orderId],
+    )
+  ).rows[0].n;
+  if (n > 0) throw conflict(`Bu zakaz bo'yicha ${n} ta ta'minot buyurtma qatori bor — avval ularni bekor qiling`);
 }
 
 // ---------- Holat ----------

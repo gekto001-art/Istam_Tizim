@@ -9,7 +9,8 @@ import { CatalogPage } from './pages/Catalog';
 import { OrdersPage } from './pages/Orders';
 import { OrderPage } from './pages/Order';
 import { SupplyOrderPage, SupplyPage } from './pages/Supply';
-import { PurchasePage, PurchasesPage } from './pages/Purchases';
+import { PurchasesPage } from './pages/Purchases';
+import { TrackingPage } from './pages/Tracking';
 
 interface NavItem {
   to: string;
@@ -22,8 +23,9 @@ const NAV: [string, NavItem[]][] = [
   [
     'Ta\'minot',
     [
-      { to: '/supply', label: 'Xomashyo zakazi', show: (r) => can.purchaseRead(r) },
+      { to: '/supply', label: 'Xomashyo zakaz', show: (r) => can.purchaseRead(r) },
       { to: '/purchases', label: 'Postavshik kelishuv', show: (r) => can.purchaseRead(r) },
+      { to: '/tracking', label: "Status o'zgartirish", show: (r) => can.purchaseRead(r) },
     ],
   ],
   ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
@@ -91,7 +93,8 @@ export function App() {
         {can.purchaseRead(me.role) && <Route path="/supply" element={<SupplyPage />} />}
         {can.purchaseRead(me.role) && <Route path="/supply/:orderId" element={<SupplyOrderPage />} />}
         {can.purchaseRead(me.role) && <Route path="/purchases" element={<PurchasesPage />} />}
-        {can.purchaseRead(me.role) && <Route path="/purchases/:id" element={<PurchasePage />} />}
+        {can.purchaseRead(me.role) && <Route path="/tracking" element={<TrackingPage />} />}
+        {can.purchaseRead(me.role) && <Route path="/tracking/:orderId" element={<TrackingPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

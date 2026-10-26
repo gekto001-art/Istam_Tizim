@@ -1,370 +1,260 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { ErrorText, Field, Modal, PageHead, fmtDate, fmtDateTime, fmtNum, useToast } from '../components/ui';
-import { can, type PaymentStatus, type PurchaseDetail, type PurchaseRow, type PurchaseStatus } from '../types';
+import { ErrorText, PageHead, fmtDate, fmtDateTime, fmtNum, useToast } from '../components/ui';
+import { AGREED, can, type PurchaseLine, type Stage } from '../types';
+import { PAYMENT_STATUS, StatusPill, cur, money, num, plain } from './purchaseUi';
 
-export const PURCHASE_STATUS: Record<PurchaseStatus, [string, string]> = {
-  negotiation: ['Kelishuv', 'warn'],
-  rejected: ['Rad etildi', 'bad'],
-  preparing: ['Tayyorlanmoqda', 'good'],
-  in_transit: ["Yo'lda", 'good'],
-  arrived: ['Yetib keldi', 'good'],
-  closed: ['Yopildi', 'muted'],
-  cancelled: ['Bekor qilindi', 'muted'],
+/** Partiya va xomashyo bo'yicha filtr (Sheets'dagi yuqori ikki tanlov) */
+function useFilters(lines: PurchaseLine[] | undefined) {
+  const [partiya, setPartiya] = useState('');
+  const [stage, setStage] = useState<'' | Stage>('');
+  const partiyas = useMemo(() => [...new Set((lines ?? []).map((l) => l.partiya_no))], [lines]);
+  const rows = (lines ?? []).filter((l) => (!partiya || l.partiya_no === partiya) && (!stage || l.stage === stage));
+  const bar = (
+    <div className="form" style={{ marginBottom: 12 }}>
+      <label className="f">
+        Partiya
+        <select value={partiya} onChange={(e) => setPartiya(e.target.value)}>
+          <option value="">Hammasi</option>
+          {partiyas.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="f">
+        Xomashyo
+        <select value={stage} onChange={(e) => setStage(e.target.value as '' | Stage)}>
+          <option value="">Hammasi</option>
+          <option value="mato">Mato</option>
+          <option value="furnitura">Furnitura</option>
+        </select>
+      </label>
+    </div>
+  );
+  return { rows, bar };
+}
+
+const sumBy = (rows: PurchaseLine[], f: (l: PurchaseLine) => number) => {
+  const by = new Map<string, number>();
+  for (const l of rows) by.set(l.currency, (by.get(l.currency) ?? 0) + f(l));
+  return [...by].map(([c, v]) => `${money(v)} ${cur(c)}`).join(' + ') || '—';
 };
-export const PAYMENT_STATUS: Record<PaymentStatus, string> = {
-  unpaid: "To'lanmagan",
-  advance: "Avans to'langan",
-  partial: "Qisman to'langan",
-  paid: "To'liq to'langan",
-};
 
-const money = (v: string | number | null | undefined) => (v == null || v === '' ? '—' : fmtNum(Math.round(Number(v) * 100) / 100, 2));
-const plain = (v: string | number | null | undefined) => (v == null ? '' : String(Number(v)));
-const num = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.'));
+const variantCells = (l: PurchaseLine) => (
+  <>
+    <td className="mono">{l.material_code ?? ''}</td>
+    <td>{l.material_color_name ?? ''}</td>
+    <td className="mono">{l.color_code ?? ''}</td>
+    <td className="mono">{l.material_size ?? ''}</td>
+  </>
+);
 
-const TABS: [string, string, PurchaseStatus[] | null][] = [
-  ['kelishuv', 'Kelishuv', ['negotiation', 'rejected']],
-  ['agreed', 'Kelishilgan', ['preparing', 'in_transit', 'arrived']],
-  ['all', 'Hammasi', null],
-];
+const TABS = [
+  ['kelishuv', 'Postavshik kelishuv'],
+  ['agreed', 'Tasdiqlangan buyurtmalar'],
+] as const;
 
 export function PurchasesPage() {
-  const nav = useNavigate();
-  const [tab, setTab] = useState('kelishuv');
-  const q = useQuery({ queryKey: ['purchases', 'list'], queryFn: () => api<PurchaseRow[]>('/purchases') });
-  const statuses = TABS.find((t) => t[0] === tab)?.[2];
-  const rows = (q.data ?? []).filter((r) => !statuses || statuses.includes(r.status));
-  const count = (st: PurchaseStatus[] | null) => (q.data ?? []).filter((r) => !st || st.includes(r.status)).length;
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>('kelishuv');
   return (
     <>
-      <PageHead title="Postavshik kelishuv" sub="Buyurtmalar: nakladnoy bo'yicha fakt miqdor va narx, tasdiqlash" />
+      <PageHead title="Postavshik kelishuv" sub="Sheets «Postavshik Kelishuv»: nakladnoy bo'yicha fakt miqdor va narx → tasdiqlash yoki rad etish" />
       <div className="tabs" role="tablist">
-        {TABS.map(([k, l, st]) => (
+        {TABS.map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-            {l} <span className="pill muted">{count(st)}</span>
+            {l}
           </button>
         ))}
       </div>
-      <ErrorText error={q.error} />
-      <div className="card">
-        <div className="tw">
-          <table>
-            <thead>
-              <tr>
-                <th>№</th>
-                <th>Sana</th>
-                <th>Partiya</th>
-                <th>Bosqich</th>
-                <th>Postavshik</th>
-                <th className="n">Qatorlar</th>
-                <th className="n">Summa, so'm</th>
-                <th>To'lov</th>
-                <th>Holat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="click" tabIndex={0} onClick={() => nav(`/purchases/${r.id}`)} onKeyDown={(e) => e.key === 'Enter' && nav(`/purchases/${r.id}`)}>
-                  <td className="mono">
-                    <b>{r.id}</b>
-                  </td>
-                  <td className="mono">{fmtDate(r.po_date)}</td>
-                  <td>
-                    <b className="mono">{r.partiya_no}</b>
-                    <div className="note">{r.product_type_name}</div>
-                  </td>
-                  <td>{r.stage === 'mato' ? 'Mato' : 'Furnitura'}</td>
-                  <td>{r.supplier_name}</td>
-                  <td className="n">{r.lines}</td>
-                  <td className="n">{money(r.amount_uzs)}</td>
-                  <td>{PAYMENT_STATUS[r.payment_status]}</td>
-                  <td>
-                    <span className={`pill ${PURCHASE_STATUS[r.status][1]}`}>{PURCHASE_STATUS[r.status][0]}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {q.data && !rows.length && <p className="note">Bu bo'limda buyurtma yo'q.</p>}
-      </div>
+      {tab === 'kelishuv' ? <Kelishuv /> : <Agreed />}
     </>
   );
 }
 
-function HeaderModal({ d, onClose, onSaved }: { d: PurchaseDetail; onClose: () => void; onSaved: (r: PurchaseDetail, m: string) => void }) {
-  const [f, setF] = useState({
-    po_date: d.po.po_date,
-    manager: d.po.manager ?? '',
-    eta: d.po.eta ?? '',
-    tracking: d.po.tracking ?? '',
-    note: d.po.note ?? '',
-  });
-  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
-  const m = useMutation({
-    mutationFn: () => api<PurchaseDetail>(`/purchases/${d.po.id}`, { method: 'PATCH', body: { ...f, eta: f.eta || null } }),
-    onSuccess: (r) => {
-      onSaved(r, 'Saqlandi');
-      onClose();
-    },
-  });
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    m.mutate();
-  };
-  return (
-    <Modal title={`Buyurtma №${d.po.id}`} onClose={onClose}>
-      <form className="form one" onSubmit={submit}>
-        <div className="form">
-          <Field label="Sana">
-            <input type="date" value={f.po_date} onChange={set('po_date')} required />
-          </Field>
-          <Field label="Menejer">
-            <input value={f.manager} onChange={set('manager')} maxLength={100} />
-          </Field>
-          <Field label="ETA (taxminiy yetib kelish)">
-            <input type="date" value={f.eta} onChange={set('eta')} />
-          </Field>
-          <Field label="Tracking">
-            <input value={f.tracking} onChange={set('tracking')} maxLength={200} />
-          </Field>
-        </div>
-        <Field label="Izoh">
-          <input value={f.note} onChange={set('note')} maxLength={1000} />
-        </Field>
-        <ErrorText error={m.error} />
-        <div className="actions">
-          <button className="btn" disabled={m.isPending}>
-            Saqlash
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
+interface Edit {
+  fact_qty: string;
+  fact_price: string;
+  agree: boolean;
+  reject: boolean;
+  note: string;
 }
 
-export function PurchasePage() {
-  const { id } = useParams();
+function Kelishuv() {
   const { me } = useAuth();
   const nav = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
-  const key = ['purchases', 'detail', Number(id)];
-  const q = useQuery({ queryKey: key, queryFn: () => api<PurchaseDetail>(`/purchases/${id}`) });
-  const d = q.data;
-  const [edit, setEdit] = useState(false);
-  const [rows, setRows] = useState<Record<number, { fact_qty: string; fact_price: string }>>({});
-  useEffect(() => {
-    if (d) setRows(Object.fromEntries(d.lines.map((l) => [l.id, { fact_qty: plain(l.fact_qty), fact_price: plain(l.fact_price) }])));
-  }, [d]);
-  const onSaved = (r: PurchaseDetail, msg: string) => {
-    qc.setQueryData(key, r);
-    qc.invalidateQueries({ queryKey: ['purchases', 'list'] });
-    qc.invalidateQueries({ queryKey: ['supply'] });
-    qc.invalidateQueries({ queryKey: ['orders'] });
-    toast(msg);
-  };
+  const q = useQuery({ queryKey: ['purchases', 'lines', 'kelishuv'], queryFn: () => api<PurchaseLine[]>('/purchases/lines?status=negotiation,rejected') });
+  const [edits, setEdits] = useState<Record<number, Edit>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => setEdits({}), [q.data]);
+  const { rows, bar } = useFilters(q.data);
   const save = useMutation({
-    mutationFn: () =>
-      api<PurchaseDetail>(`/purchases/${id}/lines`, {
-        method: 'PUT',
-        body: {
-          lines: d!.lines.map((l) => ({
-            id: l.id,
-            fact_qty: rows[l.id]?.fact_qty ? num(rows[l.id].fact_qty) : null,
-            fact_price: rows[l.id]?.fact_price ? num(rows[l.id].fact_price) : null,
-          })),
-        },
-      }),
-    onSuccess: (r) => onSaved(r, 'Nakladnoy saqlandi'),
+    mutationFn: (lines: object[]) => api<{ saved: number; agreed: number; rejected: number }>('/purchases/lines/kelishuv', { method: 'PUT', body: { lines } }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['purchases'] });
+      qc.invalidateQueries({ queryKey: ['supply'] });
+      toast([r.agreed && `${r.agreed} ta tasdiqlandi`, r.rejected && `${r.rejected} ta rad etildi`, r.saved && `${r.saved} ta saqlandi`].filter(Boolean).join(', '));
+    },
   });
-  const act = useMutation({
-    mutationFn: (a: { kind: 'agree' | 'cancel' } | { kind: 'reject'; reason: string }) =>
-      api<PurchaseDetail>(`/purchases/${id}/${a.kind}`, { method: 'POST', body: a.kind === 'reject' ? { reason: a.reason } : undefined }),
-    onSuccess: (r, a) => onSaved(r, a.kind === 'agree' ? 'Kelishuv tasdiqlandi' : a.kind === 'reject' ? 'Rad etildi' : 'Bekor qilindi'),
-  });
+  if (!me) return null;
+  const write = can.purchaseWrite(me.role);
+  const approve = can.purchaseApprove(me.role);
+  const base = (l: PurchaseLine): Edit => ({ fact_qty: plain(l.fact_qty), fact_price: plain(l.fact_price), agree: false, reject: false, note: l.note ?? '' });
+  const ed = (l: PurchaseLine) => edits[l.id] ?? base(l);
+  const set = (l: PurchaseLine, patch: Partial<Edit>) => setEdits((e) => ({ ...e, [l.id]: { ...ed(l), ...patch } }));
+  const factQty = (l: PurchaseLine) => {
+    const v = num(ed(l).fact_qty);
+    return Number.isFinite(v) ? v : Number(l.plan_qty);
+  };
+  const factPrice = (l: PurchaseLine) => {
+    const v = num(ed(l).fact_price);
+    return Number.isFinite(v) ? v : Number(l.price);
+  };
 
-  if (q.error) return <ErrorText error={q.error} />;
-  if (!d || !me) return null;
-  const p = d.po;
-  const editable = (p.status === 'negotiation' || p.status === 'rejected') && can.purchaseWrite(me.role);
-  const dirty = d.lines.some((l) => (rows[l.id]?.fact_qty ?? '') !== plain(l.fact_qty) || (rows[l.id]?.fact_price ?? '') !== plain(l.fact_price));
+  const submit = () => {
+    setMsg(null);
+    const out: object[] = [];
+    for (const l of rows) {
+      const e = edits[l.id];
+      if (!e) continue;
+      const b = base(l);
+      const fq = e.fact_qty === b.fact_qty ? undefined : e.fact_qty.trim() === '' ? null : num(e.fact_qty);
+      const fp = e.fact_price === b.fact_price ? undefined : e.fact_price.trim() === '' ? null : num(e.fact_price);
+      const decision = e.agree ? 'agree' : e.reject ? 'reject' : null;
+      const note = e.note !== b.note || decision === 'reject' ? e.note.trim() || null : undefined;
+      if ((fq != null && !(fq >= 0)) || (fp != null && !(fp >= 0))) return setMsg(`${l.material_name}: fakt miqdor yoki narx noto'g'ri`);
+      if (fq === undefined && fp === undefined && note === undefined && !decision) continue;
+      out.push({ id: l.id, ...(fq !== undefined && { fact_qty: fq }), ...(fp !== undefined && { fact_price: fp }), ...(decision && { decision }), ...(note !== undefined && { note }) });
+    }
+    if (!out.length) return setMsg('Munosabatlardan birini tanlang');
+    save.mutate(out);
+  };
+
+  const marked = rows.filter((l) => ed(l).agree || ed(l).reject).length;
   return (
-    <>
-      <PageHead title={`Buyurtma №${p.id} · ${p.supplier_name}`} sub={`${p.stage === 'mato' ? 'Mato' : 'Furnitura'} · partiya ${p.partiya_no} · ${p.product_type_name}`}>
-        <span className={`pill ${PURCHASE_STATUS[p.status][1]}`}>{PURCHASE_STATUS[p.status][0]}</span>
-        <button className="btn ghost" onClick={() => nav(`/supply/${p.order_id}`)}>
-          Xomashyo zakazi
-        </button>
-        {p.status === 'negotiation' && can.purchaseApprove(me.role) && (
-          <>
-            <button
-              className="btn ghost"
-              disabled={act.isPending || dirty}
-              onClick={() => {
-                const reason = prompt('Rad etish sababi:');
-                if (reason) act.mutate({ kind: 'reject', reason });
-              }}
-            >
-              Rad etish
-            </button>
-            <button
-              className="btn"
-              disabled={act.isPending || dirty || !d.totals.all_fact}
-              title={!d.totals.all_fact ? 'Avval barcha qatorlarga fakt miqdorni kiriting' : dirty ? 'Avval saqlang' : undefined}
-              onClick={() => confirm('Nakladnoy bo\'yicha kelishuv tasdiqlansinmi?') && act.mutate({ kind: 'agree' })}
-            >
-              Tasdiqlash
-            </button>
-          </>
-        )}
-        {['negotiation', 'rejected', 'preparing'].includes(p.status) && can.purchaseWrite(me.role) && (
-          <button className="btn ghost" disabled={act.isPending} onClick={() => confirm('Buyurtma bekor qilinsinmi?') && act.mutate({ kind: 'cancel' })}>
-            Bekor qilish
-          </button>
-        )}
-      </PageHead>
-      <ErrorText error={act.error} />
-      {p.status === 'rejected' && p.reject_reason && (
-        <div className="card warn-box" role="status">
-          <div>Rad etilgan: {p.reject_reason}. Nakladnoyni tuzatib saqlasangiz, buyurtma yana kelishuvga qaytadi.</div>
-        </div>
-      )}
-
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2>Buyurtma ma'lumotlari</h2>
-          {can.purchaseWrite(me.role) && p.status !== 'closed' && p.status !== 'cancelled' && (
-            <button className="btn ghost sm" onClick={() => setEdit(true)}>
-              Tahrirlash
-            </button>
-          )}
-        </div>
-        <dl className="kv">
-          <dt>Sana</dt>
-          <dd>{fmtDate(p.po_date)}</dd>
-          <dt>Postavshik</dt>
-          <dd>
-            {p.supplier_name}
-            {p.supplier_country ? ` (${p.supplier_country})` : ''}
-          </dd>
-          <dt>Menejer</dt>
-          <dd>{p.manager ?? '—'}</dd>
-          <dt>ETA</dt>
-          <dd>{fmtDate(p.eta)}</dd>
-          <dt>Tracking</dt>
-          <dd>{p.tracking ?? '—'}</dd>
-          <dt>To'lov</dt>
-          <dd>{PAYMENT_STATUS[p.payment_status]}</dd>
-          <dt>Tuzgan</dt>
-          <dd>{p.created_by_name ?? '—'}</dd>
-          {p.agreed_at && (
-            <>
-              <dt>Tasdiqlagan</dt>
-              <dd>
-                {p.agreed_by_name ?? '—'}, {fmtDateTime(p.agreed_at)}
-              </dd>
-            </>
-          )}
-          {p.note && (
-            <>
-              <dt>Izoh</dt>
-              <dd>{p.note}</dd>
-            </>
-          )}
-        </dl>
-      </div>
-
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-          <h2>Qatorlar: reja va nakladnoy (fakt)</h2>
-          {editable && (
-            <button className="btn sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-              Saqlash
-            </button>
-          )}
-        </div>
-        <ErrorText error={save.error} />
-        <div className="tw">
-          <table>
+    <div className="card">
+      {bar}
+      <ErrorText error={q.error} />
+      {!rows.length ? (
+        <p className="note">Kelishuvdagi buyurtma yo'q. Xomashyo zakazdan YUBORISH qilingach shu yerga tushadi.</p>
+      ) : (
+        <div className="sheet-wrap">
+          <table className="sheet" style={{ minWidth: 2300 }}>
             <thead>
               <tr>
-                <th>Xomashyo</th>
-                <th>Rangi / kodi</th>
-                <th>Razmer</th>
-                <th className="n">Reja miqdor</th>
-                <th className="n">Reja narx</th>
+                <th>Kiritilgan sana</th>
+                <th>Buyurtma ID</th>
+                <th>Sana</th>
+                <th>Yetkazib beruvchi</th>
+                <th>Mahsulot</th>
+                <th>Xomashyo kodi</th>
+                <th>Xomashyo rangi</th>
+                <th>Rang kodi</th>
+                <th>Razmeri</th>
+                <th className="n">Miqdor</th>
+                <th className="n">Narx</th>
+                <th className="n">Summa</th>
+                <th>Valyuta</th>
+                <th className="n">Kurs</th>
+                <th>Buyurtma statusi</th>
+                <th>To'lov statusi</th>
+                <th>ETA</th>
+                <th>Menejer</th>
                 <th className="n">Fakt miqdor</th>
                 <th className="n">Fakt narx</th>
-                <th className="n">Summa</th>
-                <th>Ranglar (mahsulot)</th>
+                <th className="n">Fakt summa</th>
+                <th>Tasdiqlash</th>
+                <th>Rad etish</th>
+                <th>Munosabat (izoh)</th>
+                <th />
               </tr>
             </thead>
             <tbody>
-              {d.lines.map((l) => {
-                const r = rows[l.id] ?? { fact_qty: '', fact_price: '' };
-                const set = (k: 'fact_qty' | 'fact_price') => (e: React.ChangeEvent<HTMLInputElement>) => setRows({ ...rows, [l.id]: { ...r, [k]: e.target.value } });
+              {rows.map((l) => {
+                const e = ed(l);
                 return (
-                  <tr key={l.id}>
+                  <tr key={l.id} className={e.agree ? 'sel-row' : e.reject ? 'bad-row' : ''}>
+                    <td className="mono">{fmtDateTime(l.created_at)}</td>
+                    <td className="mono">
+                      <button className="btn ghost sm" onClick={() => nav(`/supply/${l.order_id}`)}>
+                        {l.partiya_no}
+                      </button>
+                    </td>
+                    <td className="mono">{fmtDate(l.po_date)}</td>
+                    <td>{l.supplier_name}</td>
+                    <td title={l.for_colors ? `Tovar ranglari: ${l.for_colors}` : undefined}>
+                      <b>{l.material_name}</b> <span className="note">{l.stage === 'mato' ? 'mato' : ''}</span>
+                    </td>
+                    {variantCells(l)}
+                    <td className="n">
+                      {fmtNum(l.plan_qty)} <span className="note">{l.unit}</span>
+                    </td>
+                    <td className="n">{plain(l.price)}</td>
+                    <td className="n">{money(l.plan_amount)}</td>
+                    <td>{cur(l.currency)}</td>
+                    <td className="n">{l.currency === 'UZS' ? '' : plain(l.rate)}</td>
                     <td>
-                      <b>{l.material_name}</b>
-                      {l.material_code && <div className="note mono">{l.material_code}</div>}
+                      <StatusPill status={l.status} />
+                      {l.reject_reason && <div className="note">{l.reject_reason}</div>}
+                    </td>
+                    <td>{PAYMENT_STATUS[l.payment_status]}</td>
+                    <td className="mono">{l.eta ? fmtDate(l.eta) : ''}</td>
+                    <td>{l.manager ?? ''}</td>
+                    <td className="n">
+                      <input
+                        className="cell num"
+                        inputMode="decimal"
+                        placeholder={plain(l.plan_qty)}
+                        value={e.fact_qty}
+                        disabled={!write}
+                        onChange={(x) => set(l, { fact_qty: x.target.value })}
+                        aria-label="Fakt miqdor"
+                      />
+                    </td>
+                    <td className="n">
+                      <input
+                        className="cell num"
+                        inputMode="decimal"
+                        placeholder={plain(l.price)}
+                        value={e.fact_price}
+                        disabled={!write}
+                        onChange={(x) => set(l, { fact_price: x.target.value })}
+                        aria-label="Fakt narx"
+                      />
+                    </td>
+                    <td className="n">{money(factQty(l) * factPrice(l))}</td>
+                    <td>
+                      <input type="checkbox" aria-label="Tasdiqlash" checked={e.agree} disabled={!approve} onChange={(x) => set(l, { agree: x.target.checked, reject: false })} />
                     </td>
                     <td>
-                      {l.material_color_name ?? '—'}
-                      {l.color_code && <div className="note mono">{l.color_code}</div>}
+                      <input
+                        type="checkbox"
+                        aria-label="Rad etish"
+                        checked={e.reject}
+                        disabled={!approve || l.status === 'rejected'}
+                        onChange={(x) => set(l, { reject: x.target.checked, agree: false })}
+                      />
                     </td>
-                    <td className="mono">{l.material_size ?? '—'}</td>
-                    <td className="n">
-                      {fmtNum(l.plan_qty, 3)} <span className="note">{l.unit}</span>
+                    <td>
+                      <input
+                        className="cell"
+                        value={e.note}
+                        placeholder={e.reject ? 'rad etish sababi' : ''}
+                        disabled={!write && !e.reject}
+                        onChange={(x) => set(l, { note: x.target.value })}
+                        aria-label="Munosabat"
+                      />
                     </td>
-                    <td className="n">
-                      {plain(l.price)} <span className="note">{l.currency}</span>
-                    </td>
-                    <td className="n">
-                      {editable ? (
-                        <input className="num" inputMode="decimal" aria-label={`${l.material_name}: fakt miqdor`} value={r.fact_qty} onChange={set('fact_qty')} />
-                      ) : l.fact_qty == null ? (
-                        '—'
-                      ) : (
-                        <b>{fmtNum(l.fact_qty, 3)}</b>
+                    <td>
+                      {write && (
+                        <CancelButton id={l.id} />
                       )}
-                    </td>
-                    <td className="n">
-                      {editable ? (
-                        <input
-                          className="num sm"
-                          inputMode="decimal"
-                          aria-label={`${l.material_name}: fakt narx`}
-                          placeholder={plain(l.price)}
-                          value={r.fact_price}
-                          onChange={set('fact_price')}
-                        />
-                      ) : (
-                        plain(l.fact_price ?? l.price)
-                      )}
-                    </td>
-                    <td className="n">
-                      {money(l.fact_amount ?? l.plan_amount)} <span className="note">{l.currency}</span>
-                      {l.currency !== 'UZS' && <div className="note">{money(l.amount_uzs)} so'm</div>}
-                    </td>
-                    <td className="note">
-                      {l.sources.map((s) => (
-                        <div key={s.color_name}>
-                          {s.color_name}: {fmtNum(s.plan_qty, 3)}
-                          {s.fact_qty != null && ` → ${fmtNum(s.fact_qty, 3)}`}
-                          {s.products != null && (
-                            <>
-                              {' '}
-                              = <b>{fmtNum(s.products)} dona</b>
-                            </>
-                          )}
-                        </div>
-                      ))}
                     </td>
                   </tr>
                 );
@@ -372,13 +262,141 @@ export function PurchasePage() {
             </tbody>
           </table>
         </div>
-        <p className="note">
-          Reja jami: {money(d.totals.plan_uzs)} so'm · Fakt jami: {money(d.totals.fact_uzs)} so'm.
-          {p.stage === 'mato' && ' Mato bo\'yicha: fakt ÷ sarf = rangdagi yangi mahsulot soni (yuqoriga yaxlitlanadi); tasdiqlangach zakazdagi son o\'zgaradi va furnitura shunga qarab hisoblanadi.'}
-          {editable && ' Fakt narx bo\'sh qolsa — reja narxi olinadi.'}
+      )}
+      {!!rows.length && (
+        <div className="row" style={{ justifyContent: 'space-between', marginTop: 10 }}>
+          <span className="note">
+            {rows.length} qator · reja summa: {sumBy(rows, (l) => Number(l.plan_amount))} · fakt summa: {sumBy(rows, (l) => factQty(l) * factPrice(l))}
+            {marked ? ` · belgilangan: ${marked}` : ''}. Fakt kiritilmasa zakaz qilingan miqdor va narx olinadi.
+          </span>
+          <div className="row">
+            {msg && (
+              <span className="err" role="alert">
+                {msg}
+              </span>
+            )}
+            <ErrorText error={save.error} />
+            {(write || approve) && (
+              <button className="btn" disabled={save.isPending} onClick={submit}>
+                TASDIQLASH
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CancelButton({ id }: { id: number }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const m = useMutation({
+    mutationFn: () => api(`/purchases/lines/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchases'] });
+      qc.invalidateQueries({ queryKey: ['supply'] });
+      toast('Qator bekor qilindi');
+    },
+    onError: (e) => toast(e instanceof Error ? e.message : String(e)),
+  });
+  return (
+    <button className="btn ghost sm" disabled={m.isPending} onClick={() => confirm('Buyurtma qatori bekor qilinsinmi? Ehtiyoj Xomashyo zakazda qayta ochiladi.') && m.mutate()}>
+      Bekor
+    </button>
+  );
+}
+
+/** Sheets «Tasdiqlangan buyurtmalar» */
+function Agreed() {
+  const nav = useNavigate();
+  const q = useQuery({ queryKey: ['purchases', 'lines', 'agreed'], queryFn: () => api<PurchaseLine[]>(`/purchases/lines?status=${AGREED.join(',')}`) });
+  const { rows, bar } = useFilters(q.data);
+  return (
+    <div className="card">
+      {bar}
+      <ErrorText error={q.error} />
+      {!rows.length ? (
+        <p className="note">Tasdiqlangan buyurtma yo'q.</p>
+      ) : (
+        <div className="sheet-wrap">
+          <table className="sheet" style={{ minWidth: 2200 }}>
+            <thead>
+              <tr>
+                <th>Kiritilgan sana</th>
+                <th>Buyurtma ID</th>
+                <th>Sana</th>
+                <th>Yetkazib beruvchi</th>
+                <th>Mahsulot</th>
+                <th>Xomashyo kodi</th>
+                <th>Xomashyo rangi</th>
+                <th>Rang kodi</th>
+                <th>Razmeri</th>
+                <th className="n">Miqdor</th>
+                <th className="n">Narx</th>
+                <th className="n">Summa</th>
+                <th>Valyuta</th>
+                <th className="n">Kurs</th>
+                <th>Buyurtma statusi</th>
+                <th>To'lov statusi</th>
+                <th>ETA</th>
+                <th>Tracking</th>
+                <th>Yetib kelish kuni</th>
+                <th>Menejer</th>
+                <th>Izoh</th>
+                <th className="n">Yo'lga chiqqan</th>
+                <th className="n">Qoldiq</th>
+                <th>Tasdiqladi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((l) => (
+                <tr key={l.id}>
+                  <td className="mono">{fmtDateTime(l.created_at)}</td>
+                  <td className="mono">
+                    <button className="btn ghost sm" onClick={() => nav(`/tracking/${l.order_id}`)}>
+                      {l.partiya_no}
+                    </button>
+                  </td>
+                  <td className="mono">{fmtDate(l.po_date)}</td>
+                  <td>{l.supplier_name}</td>
+                  <td title={l.for_colors ? `Tovar ranglari: ${l.for_colors}` : undefined}>
+                    <b>{l.material_name}</b>
+                  </td>
+                  {variantCells(l)}
+                  <td className="n">
+                    {fmtNum(l.fact_qty ?? l.plan_qty)} <span className="note">{l.unit}</span>
+                  </td>
+                  <td className="n">{plain(l.fact_price ?? l.price)}</td>
+                  <td className="n">{money(l.fact_amount)}</td>
+                  <td>{cur(l.currency)}</td>
+                  <td className="n">{l.currency === 'UZS' ? '' : plain(l.rate)}</td>
+                  <td>
+                    <StatusPill status={l.status} />
+                  </td>
+                  <td>{PAYMENT_STATUS[l.payment_status]}</td>
+                  <td className="mono">{l.eta ? fmtDate(l.eta) : ''}</td>
+                  <td>{l.tracking ?? ''}</td>
+                  <td className="mono">{l.arrived_date ? fmtDate(l.arrived_date) : ''}</td>
+                  <td>{l.manager ?? ''}</td>
+                  <td>{l.note ?? ''}</td>
+                  <td className="n">{fmtNum(l.shipped_qty)}</td>
+                  <td className="n">{Number(l.remaining_qty) ? fmtNum(l.remaining_qty) : <span className="pill good">0</span>}</td>
+                  <td>
+                    {l.agreed_by_name ?? ''}
+                    {l.agreed_at && <div className="note">{fmtDateTime(l.agreed_at)}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!!rows.length && (
+        <p className="note" style={{ marginTop: 8 }}>
+          {rows.length} qator · summa: {sumBy(rows, (l) => Number(l.fact_amount))}
         </p>
-      </div>
-      {edit && <HeaderModal d={d} onClose={() => setEdit(false)} onSaved={onSaved} />}
-    </>
+      )}
+    </div>
   );
 }
