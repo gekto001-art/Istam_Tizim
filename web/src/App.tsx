@@ -11,6 +11,9 @@ import { OrderPage } from './pages/Order';
 import { SupplyOrderPage, SupplyPage } from './pages/Supply';
 import { PurchasesPage } from './pages/Purchases';
 import { TrackingPage } from './pages/Tracking';
+import { PrixodPage, PrixodTaminotPage } from './pages/StockIn';
+import { RasxodPage, SotuvPage, ZayavkaPage } from './pages/StockOut';
+import { NakladnoyPage, OstatkaPage } from './pages/StockReports';
 
 interface NavItem {
   to: string;
@@ -28,7 +31,19 @@ const NAV: [string, NavItem[]][] = [
       { to: '/tracking', label: "Status o'zgartirish", show: (r) => can.purchaseRead(r) },
     ],
   ],
-  ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
+  [
+    'Xomashyo skladi',
+    [
+      { to: '/stock/prixod-taminot', label: "Prixod (Ta'minot orqali)", show: (r) => can.stockRead(r) },
+      { to: '/stock/prixod', label: 'Prixod', show: (r) => can.stockRead(r) },
+      { to: '/stock/zayavka', label: 'Rasxod (Zayavka)', show: (r) => can.stockRead(r) },
+      { to: '/stock/rasxod', label: 'Rasxod', show: (r) => can.stockRead(r) },
+      { to: '/stock/sotuv', label: 'Sotuv', show: (r) => can.stockRead(r) },
+      { to: '/stock/ostatka', label: 'Ostatka', show: (r) => can.stockRead(r) },
+      { to: '/stock/nakladnoy', label: 'Nakladnoy', show: (r) => can.stockRead(r) },
+    ],
+  ],
+  ['Ma\'lumotnomalar',[{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
   [
     'Tizim',
     [
@@ -95,6 +110,13 @@ export function App() {
         {can.purchaseRead(me.role) && <Route path="/purchases" element={<PurchasesPage />} />}
         {can.purchaseRead(me.role) && <Route path="/tracking" element={<TrackingPage />} />}
         {can.purchaseRead(me.role) && <Route path="/tracking/:orderId" element={<TrackingPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/prixod-taminot" element={<PrixodTaminotPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/prixod" element={<PrixodPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/zayavka" element={<ZayavkaPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/rasxod" element={<RasxodPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/sotuv" element={<SotuvPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/ostatka" element={<OstatkaPage />} />}
+        {can.stockRead(me.role) && <Route path="/stock/nakladnoy" element={<NakladnoyPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

@@ -54,6 +54,8 @@ export const can = {
   purchaseRead: has(['admin', 'rahbar', 'taminot', 'innovatsiya', 'buxgalter', 'sklad']),
   purchaseWrite: has(['admin', 'taminot']),
   purchaseApprove: has(['admin', 'rahbar', 'taminot']),
+  stockRead: has(['admin', 'rahbar', 'sklad', 'taminot', 'innovatsiya', 'bichuv', 'buxgalter']),
+  stockWrite: has(['admin', 'sklad']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -315,4 +317,89 @@ export interface Shipment {
 export interface TrackingDetail {
   lines: PurchaseLine[];
   shipments: Shipment[];
+}
+
+// ---------- Xomashyo skladi ----------
+export type StockKind = 'prixod_taminot' | 'prixod' | 'rasxod_zayavka' | 'rasxod' | 'sotuv';
+export type StockOp = 'prixod' | 'vozvrat' | 'peremesheniya' | 'sotuv';
+export type Destination = 'kroy' | 'producer' | 'other';
+
+/** Xomashyo kaliti: nomi + rangi + rang kodi + razmeri */
+export interface StockItem {
+  material_id: number;
+  material_name: string;
+  material_code: string | null;
+  unit: string;
+  material_color_id: number | null;
+  material_color_name: string | null;
+  color_code: string | null;
+  material_size: string | null;
+}
+
+export interface StockBalance extends StockItem {
+  qty: string;
+  avg_cost: string | null;
+  value_uzs: string | null;
+}
+
+export interface TransitOrder { order_id: number; partiya_no: string; product_type_name: string; lines: number }
+export interface TransitLine extends StockItem {
+  purchase_line_id: number;
+  supplier_name: string;
+  transit_qty: string;
+  price: string;
+  currency: string;
+  rate: string;
+}
+
+export interface ZayavkaOrder { order_id: number; partiya_no: string; product_type_name: string; producer_name: string | null; items: number }
+export interface ZayavkaItem extends StockItem {
+  received: string;
+  issued: string;
+  left_qty: string;
+  stock: string;
+  avg_cost: string | null;
+}
+export interface ZayavkaDetail {
+  order: { id: number; partiya_no: string; producer_id: number | null; producer_name: string | null };
+  items: ZayavkaItem[];
+}
+
+export interface StockMove extends StockItem {
+  id: number;
+  doc_id: number;
+  kind: StockKind;
+  op: StockOp;
+  doc_date: string;
+  created_at: string;
+  created_by_name: string | null;
+  dir: 1 | -1;
+  qty: string;
+  sent_qty: string | null;
+  price: string;
+  currency: string;
+  rate: string;
+  amount_uzs: string;
+  extra_uzs: string;
+  cost_uzs: string;
+  destination: Destination | null;
+  producer_name: string | null;
+  partiya_no: string | null;
+  order_id: number | null;
+  counterparty: string | null;
+}
+
+export interface StockExpense {
+  id: number;
+  doc_id: number;
+  kind: StockKind;
+  doc_date: string;
+  created_at: string;
+  category: string;
+  supplier_name: string;
+  amount: string;
+  currency: string;
+  rate: string;
+  amount_uzs: string;
+  partiya_no: string | null;
 }

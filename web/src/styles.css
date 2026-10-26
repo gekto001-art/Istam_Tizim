@@ -153,3 +153,12 @@ table.sheet tr.sel-row td { background: color-mix(in srgb, var(--brand) 9%, tran
 .bulk-bar input { width: 120px; }
 table.picker { font-size: 13px; }
 table.picker td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+
+/* Chop etish (Nakladnoy) */
+@media print {
+  aside, .no-print, .toast { display: none !important; }
+  .app { display: block; }
+  main { padding: 0; }
+  .card.print-sheet { border: 0; padding: 0; }
+  body { background: #fff; color: #000; }
+}
