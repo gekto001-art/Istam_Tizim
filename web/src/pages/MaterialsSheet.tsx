@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { ErrorText, Modal, fmtNum } from '../components/ui';
+import { ErrorText, fmtNum } from '../components/ui';
 import { CURRENCIES, type Color, type CurrencyRate, type Material, type OrderDetail, type Supplier } from '../types';
+import { AddMaterialModal, BulkBar, CopyRowsModal, emptyRow, newKey, type Row } from './MaterialsTools';
 import { useCatalog } from './Orders';
 
 /**
@@ -11,31 +12,9 @@ import { useCatalog } from './Orders';
  * to'liq bo'lmagan qator "X" bilan belgilanadi. Hammasi bir joyda tahrirlanib, bitta "Saqlash" bilan yoziladi.
  */
 
-interface Row {
-  key: string;
-  id?: number;
-  supplier_id: string;
-  name: string;
-  material_id: string;
-  material_color_id: string;
-  color_code: string;
-  material_size: string;
-  per_unit: string;
-  price: string;
-  from_us: boolean;
-  currency: string;
-  rate: string;
-  size_id: string; // '' — rangning barcha razmerlari
-  color_id: string;
-  is_main: boolean;
-  note: string;
-}
-
 const num = (s: string) => Number(String(s).replace(/\s/g, '').replace(',', '.'));
 const plain = (v: string | number | null | undefined) => (v == null ? '' : String(Number(v)));
 const money = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? '—' : fmtNum(Math.round(v * 100) / 100, 2));
-let seq = 0;
-const newKey = () => `n${++seq}`;
 
 function fromDetail(d: OrderDetail): Row[] {
   return d.materials.map((m) => ({
@@ -69,8 +48,14 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
   const rates = useQuery({ queryKey: ['catalog', 'currency-rates'], queryFn: () => api<CurrencyRate[]>('/currency-rates') });
   const [rows, setRows] = useState<Row[]>(() => fromDetail(d));
   const [filter, setFilter] = useState('');
-  const [copy, setCopy] = useState(false);
-  useEffect(() => setRows(fromDetail(d)), [d]);
+  const [sizeFilter, setSizeFilter] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
+  const [copying, setCopying] = useState(false);
+  useEffect(() => {
+    setRows(fromDetail(d));
+    setSel(new Set());
+  }, [d]);
   const dirty = snapshot(rows) !== snapshot(fromDetail(d));
 
   // jadvaldagi (razmer × rang) kataklar
@@ -113,26 +98,24 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
     const last = rows[rows.length - 1];
     setRows([
       ...rows,
-      {
-        key: newKey(),
-        supplier_id: '',
-        name: '',
-        material_id: '',
-        material_color_id: '',
-        color_code: '',
-        material_size: '',
-        per_unit: '',
-        price: '',
-        from_us: true,
+      emptyRow({
         currency: last?.currency ?? 'UZS',
-        rate: '',
-        size_id: '',
         color_id: filter || last?.color_id || (matrixColors[0] ? String(matrixColors[0][0]) : ''),
-        is_main: false,
-        note: '',
-      },
+        size_id: sizeFilter,
+      }),
     ]);
   };
+  /** Belgilanganlarga bitta ustun: "=" xomashyo rangi — har qatorning o'z mahsulot rangi; T.M. razmer — rangda bo'lsa */
+  const applyBulk = (field: string, value: string | boolean) =>
+    setRows((rs) =>
+      rs.map((r) => {
+        if (!sel.has(r.key)) return r;
+        if (field === 'material_color_id' && value === '=') return { ...r, material_color_id: r.color_id };
+        if (field === 'size_id' && value !== '' && !sizesOf(r.color_id).some((i) => String(i.size_id) === value)) return r;
+        if (field === 'currency') return { ...r, currency: String(value), rate: '' };
+        return { ...r, [field]: value };
+      }),
+    );
   const duplicate = (r: Row) => {
     const i = rows.findIndex((x) => x.key === r.key);
     setRows([...rows.slice(0, i + 1), { ...r, key: newKey(), id: undefined, is_main: false }, ...rows.slice(i + 1)]);
@@ -177,7 +160,10 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
     onSuccess: (r) => onSaved(r, 'Xomashyo jadvali saqlandi'),
   });
 
-  const visible = rows.filter((r) => !filter || r.color_id === filter);
+  const visible = rows.filter((r) => (!filter || r.color_id === filter) && (!sizeFilter || r.size_id === sizeFilter || (sizeFilter === '*' && !r.size_id)));
+  const allSel = visible.length > 0 && visible.every((r) => sel.has(r.key));
+  const toggleSel = (key: string) => setSel((x) => (x.has(key) ? new Set([...x].filter((k) => k !== key)) : new Set([...x, key])));
+  const sizesInMatrix = [...new Map(d.items.map((i) => [String(i.size_id), i.size_name])).entries()];
   const totalUzs = rows.reduce((a, r) => {
     const k = r.currency === 'UZS' ? 1 : r.rate ? num(r.rate) : rateFor(r.currency);
     const v = num(r.per_unit) * (num(r.price) || 0) * tmQty(r) * k;
@@ -207,13 +193,22 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
               </option>
             ))}
           </select>
+          <select aria-label="T.M. razmer bo'yicha filtr" value={sizeFilter} onChange={(e) => setSizeFilter(e.target.value)}>
+            <option value="">Barcha razmerlar</option>
+            <option value="*">Faqat "Hammasi" qatorlari</option>
+            {sizesInMatrix.map(([id, n]) => (
+              <option key={id} value={id}>
+                {n}
+              </option>
+            ))}
+          </select>
           {editable && (
             <>
-              <button className="btn ghost sm" disabled={!rows.length} onClick={() => setCopy(true)}>
-                Rangdan rangga nusxa
+              <button className="btn sm" onClick={() => setAdding(true)}>
+                Xomashyo qo'shish…
               </button>
               <button className="btn ghost sm" onClick={addRow}>
-                + qator
+                + bo'sh qator
               </button>
               {dirty && (
                 <button className="btn ghost sm" onClick={() => setRows(fromDetail(d))}>
@@ -227,6 +222,21 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
           )}
         </div>
       </div>
+      {editable && sel.size > 0 && (
+        <BulkBar
+          count={sel.size}
+          d={d}
+          suppliers={suppliers.data ?? []}
+          colors={colors.data ?? []}
+          onApply={applyBulk}
+          onCopy={() => setCopying(true)}
+          onDelete={() => {
+            setRows(rows.filter((r) => !sel.has(r.key)));
+            setSel(new Set());
+          }}
+          onClear={() => setSel(new Set())}
+        />
+      )}
       <ErrorText error={save.error} />
       {editable && blocking.length > 0 && (
         <p className="err">{blocking.length} ta qatorda xomashyo, miqdor yoki tayyor mahsulot rangi to'ldirilmagan ("X") — saqlashdan oldin to'ldiring yoki o'chiring.</p>
@@ -235,6 +245,16 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
         <table className="sheet">
           <thead>
             <tr>
+              {editable && (
+                <th>
+                  <input
+                    type="checkbox"
+                    aria-label="Ko'rinayotgan qatorlarni belgilash"
+                    checked={allSel}
+                    onChange={() => setSel(allSel ? new Set([...sel].filter((k) => !visible.some((r) => r.key === k))) : new Set([...sel, ...visible.map((r) => r.key)]))}
+                  />
+                </th>
+              )}
               <th>№</th>
               <th>Postavshik</th>
               <th>Xomashyo nomi</th>
@@ -300,7 +320,10 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
                 );
               }
               return (
-                <tr key={r.key} className={p.length ? 'bad-row' : ''}>
+                <tr key={r.key} className={[p.length ? 'bad-row' : '', sel.has(r.key) ? 'sel-row' : ''].join(' ')}>
+                  <td>
+                    <input type="checkbox" aria-label={`${lbl}: belgilash`} checked={sel.has(r.key)} onChange={() => toggleSel(r.key)} />
+                  </td>
                   <td className="mono">{idx}</td>
                   <td>
                     <select aria-label={`${lbl}: postavshik`} value={r.supplier_id} onChange={(e) => set(r.key, { supplier_id: e.target.value })}>
@@ -431,68 +454,42 @@ export function MaterialsSheet({ d, editable, onSaved }: { d: OrderDetail; edita
           </tbody>
         </table>
       </div>
-      {!rows.length && <p className="note">Xomashyo yo'q. {editable && '"+ qator" bilan qo\'shing.'}</p>}
+      {!rows.length && <p className="note">Xomashyo yo'q. {editable && '"Xomashyo qo\'shish…" bilan bir nechta razmer/rangga birdan qo\'shing.'}</p>}
       <p className="note">
         Summa = miqdor × narx · Umumiy miqdor = miqdor × T.M. soni · T.M. soni — razmer × rang jadvalidan ("Hammasi" — rangning barcha razmerlari) ·
         Kurs bo'sh bo'lsa zakaz sanasidagi kurs olinadi · Asosiy mato — avval zakaz qilinadi, son fakt matoga qarab qayta hisoblanadi.
         {rows.length > 0 && <> Jami so'mda: <b>{money(totalUzs)}</b></>}
         {dirty && editable && ' · O\'zgarishlar saqlanmagan.'}
       </p>
-      {copy && (
-        <CopyColorsModal
-          colors={matrixColors}
-          onClose={() => setCopy(false)}
-          onCopy={(from, to) => {
-            const src = rows.filter((r) => r.color_id === from);
-            const add: Row[] = to.flatMap((c) =>
-              src
-                .filter((r) => !r.size_id || sizesOf(c).some((i) => String(i.size_id) === r.size_id))
-                .map((r) => ({ ...r, key: newKey(), id: undefined, color_id: c })),
-            );
+      {adding && (
+        <AddMaterialModal
+          d={d}
+          materials={materials.data ?? []}
+          suppliers={suppliers.data ?? []}
+          colors={colors.data ?? []}
+          onClose={() => setAdding(false)}
+          onAdd={(add) => {
             setRows([...rows, ...add]);
-            setCopy(false);
+            setAdding(false);
+          }}
+        />
+      )}
+      {copying && (
+        <CopyRowsModal
+          d={d}
+          source={rows.filter((r) => sel.has(r.key))}
+          onClose={() => setCopying(false)}
+          onCopy={(copied) => {
+            // katakda asosiy mato allaqachon bo'lsa — nusxadagi "asosiy" belgisi olib tashlanadi
+            const overlap = (a: Row, b: Row) => a.color_id === b.color_id && (!a.size_id || !b.size_id || a.size_id === b.size_id);
+            const add: Row[] = [];
+            for (const r of copied) add.push(r.is_main && [...rows, ...add].some((x) => x.is_main && overlap(x, r)) ? { ...r, is_main: false } : r);
+            setRows([...rows, ...add]);
+            setSel(new Set(add.map((r) => r.key)));
+            setCopying(false);
           }}
         />
       )}
     </div>
-  );
-}
-
-function CopyColorsModal({ colors, onClose, onCopy }: { colors: [number, string][]; onClose: () => void; onCopy: (from: string, to: string[]) => void }) {
-  const [from, setFrom] = useState(colors[0] ? String(colors[0][0]) : '');
-  const [to, setTo] = useState<string[]>([]);
-  return (
-    <Modal title="Rangdan rangga nusxa" onClose={onClose}>
-      <p className="note">Tanlangan rangdagi barcha qatorlar boshqa ranglarga qo'shiladi (keyin farqli joylarini — masalan mato rangini — tahrirlang va saqlang).</p>
-      <label className="f">
-        Qaysi rangdan
-        <select value={from} onChange={(e) => setFrom(e.target.value)}>
-          {colors.map(([id, n]) => (
-            <option key={id} value={id}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="row">
-        {colors
-          .filter(([id]) => String(id) !== from)
-          .map(([id, n]) => (
-            <label key={id} className="chk">
-              <input
-                type="checkbox"
-                checked={to.includes(String(id))}
-                onChange={() => setTo(to.includes(String(id)) ? to.filter((x) => x !== String(id)) : [...to, String(id)])}
-              />{' '}
-              {n}
-            </label>
-          ))}
-      </div>
-      <div className="actions">
-        <button className="btn" disabled={!to.length} onClick={() => onCopy(from, to)}>
-          Nusxa olish
-        </button>
-      </div>
-    </Modal>
   );
 }

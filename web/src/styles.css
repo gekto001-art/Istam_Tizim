@@ -146,3 +146,9 @@ table.sheet select, table.sheet input.cell { padding: 4px 6px; font-size: 12.5px
 table.sheet input.cell.sm { width: 70px; }
 table.sheet input.cell.num { width: 80px; text-align: right; font-family: var(--f-mono); }
 table.sheet tr.bad-row td { background: color-mix(in srgb, var(--bad) 6%, transparent); }
+table.sheet tr.sel-row td { background: color-mix(in srgb, var(--brand) 9%, transparent); }
+.bulk-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; margin-bottom: 8px; border-radius: 8px; background: var(--amber-soft); font-size: 13px; }
+.bulk-bar .sep { flex: 1; }
+.bulk-bar input { width: 120px; }
+table.picker { font-size: 13px; }
+table.picker td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
