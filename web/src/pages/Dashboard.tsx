@@ -20,7 +20,7 @@ const MODULES: { name: string; what: string; stage: Stage }[] = [
   { name: 'Kassa', what: 'Pul oqimlari', stage: 'plan' },
   { name: 'Oldi-berdi (DT-KT)', what: 'Kontragentlar bilan hisob-kitob (avto)', stage: 'plan' },
   { name: 'HR', what: 'Priyom, uvolneniya, ish hajmi bo\'yicha nachisleniya', stage: 'plan' },
-  { name: 'Hisobotlar', what: 'P&L, Balans, Cash Flow (avto)', stage: 'plan' },
+  { name: 'Hisobotlar', what: 'ABC tahlil (marja, sotuv soni, summa) — tayyor; P&L, Balans, Cash Flow (avto)', stage: 'next' },
   { name: 'Analitika', what: 'Dashboard va grafiklar', stage: 'plan' },
 ];
 

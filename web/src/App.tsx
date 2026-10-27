@@ -19,6 +19,7 @@ import { BrakPage, KroyClosedPage, KroyRasxodPage, OtkPage, SemiPage } from './p
 import { TsexOstatkaPage, TsexPrixodPage, TsexProductionPage, TsexXaPage } from './pages/Tsex';
 import { OtkFinalPage, SpisaniyaPage, TayyorPage } from './pages/OtkFinal';
 import { BillzSalesPage, BillzSettingsPage, BillzStockPage } from './pages/Billz';
+import { AbcPage } from './pages/Reports';
 
 interface NavItem {
   to: string;
@@ -84,6 +85,7 @@ const NAV: [string, NavItem[]][] = [
       { to: '/billz/sozlamalar', label: 'Billz sozlamalari', show: (r) => can.billzManage(r) },
     ],
   ],
+  ['Hisobotlar', [{ to: '/hisobot/abc', label: 'ABC tahlil', show: (r) => can.reportsRead(r) }]],
   ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
   [
     'Tizim',
@@ -174,6 +176,7 @@ export function App() {
         {can.billzRead(me.role) && <Route path="/billz/qoldiq" element={<BillzStockPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sotuv" element={<BillzSalesPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sozlamalar" element={<BillzSettingsPage />} />}
+        {can.reportsRead(me.role) && <Route path="/hisobot/abc" element={<AbcPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

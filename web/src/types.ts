@@ -64,6 +64,7 @@ export const can = {
   fgRead: has(['admin', 'rahbar', 'otk', 'sklad', 'sotuv', 'tsex', 'bichuv', 'innovatsiya', 'buxgalter']),
   billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
   billzManage: has(['admin']),
+  reportsRead: has(['admin', 'rahbar', 'buxgalter', 'sotuv']),
 };
 
 // ---------- Ma'lumotnomalar ----------
