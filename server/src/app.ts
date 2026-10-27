@@ -16,6 +16,7 @@ import { stockRouter } from './routes/stock.js';
 import { kroyRouter } from './routes/kroy.js';
 import { tsexRouter } from './routes/tsex.js';
 import { otkRouter } from './routes/otk.js';
+import { billzRouter } from './routes/billz.js';
 import { usersRouter } from './routes/users.js';
 
 export function createApp() {
@@ -43,6 +44,7 @@ export function createApp() {
   api.use('/kroy', requireAuth, kroyRouter);
   api.use('/tsex', requireAuth, tsexRouter);
   api.use('/otk', requireAuth, otkRouter);
+  api.use('/billz', requireAuth, billzRouter);
   api.use('/', requireAuth, catalogRouter); // /colors, /sizes, /materials ...
   app.use('/api', api);
 

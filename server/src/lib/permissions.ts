@@ -49,7 +49,9 @@ export type Action =
   | 'otk.write' // sifat nazorati (OTK Bichuv)
   | 'tsex.read' // tsex: kroydan prixod, ishlab chiqarish, ostatka
   | 'tsex.write' // kroydan kelganini qabul qilish / rad etish, tikilgan fakt
-  | 'fg.read'; // OTK (tayyor mahsulot), tayyor mahsulot skladi, spisaniya
+  | 'fg.read' // OTK (tayyor mahsulot), tayyor mahsulot skladi, spisaniya
+  | 'billz.read' // Billz'dan olingan qoldiq va sotuv, qo'lda yangilash
+  | 'billz.manage'; // Billz kaliti va sozlamalari
 
 const MATRIX: Record<Action, Role[]> = {
   'users.manage': ['admin'],
@@ -71,6 +73,8 @@ const MATRIX: Record<Action, Role[]> = {
   'tsex.read': ['admin', 'rahbar', 'tsex', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'buxgalter'],
   'tsex.write': ['admin', 'tsex'],
   'fg.read': ['admin', 'rahbar', 'otk', 'sklad', 'sotuv', 'tsex', 'bichuv', 'innovatsiya', 'buxgalter'],
+  'billz.read': ['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk'],
+  'billz.manage': ['admin'],
 };
 
 export function can(role: Role, action: Action): boolean {

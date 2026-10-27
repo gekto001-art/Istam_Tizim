@@ -62,6 +62,8 @@ export const can = {
   tsexRead: has(['admin', 'rahbar', 'tsex', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'buxgalter']),
   tsexWrite: has(['admin', 'tsex']),
   fgRead: has(['admin', 'rahbar', 'otk', 'sklad', 'sotuv', 'tsex', 'bichuv', 'innovatsiya', 'buxgalter']),
+  billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
+  billzManage: has(['admin']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -647,4 +649,58 @@ export interface Writeoff {
   unit_cost_uzs: string | null;
   amount_uzs: string;
   ref_id: number;
+}
+
+// ---------- Billz integratsiyasi ----------
+export interface BillzRun {
+  id: number;
+  trigger: 'auto' | 'manual';
+  started_at: string;
+  finished_at: string | null;
+  ok: boolean | null;
+  message: string | null;
+  stock_rows: number | null;
+  sales_rows: number | null;
+}
+export interface BillzSettings {
+  configured: boolean;
+  token_hint: string | null;
+  enabled: boolean;
+  shop_ids: string[];
+  sales_start: string | null;
+  updated_at: string;
+  shops: { id: string; name: string; synced_at: string }[];
+  runs: BillzRun[];
+}
+export interface BillzStockRow {
+  shop_id: string;
+  shop_name: string | null;
+  product_id: string;
+  product_name: string;
+  base_name: string | null;
+  sku: string | null;
+  barcode: string | null;
+  brand_name: string | null;
+  supplier_name: string | null;
+  unit: string | null;
+  qty: string;
+  supply_price: string | null;
+  retail_price: string | null;
+  categories: string | null;
+  synced_at: string;
+}
+export interface BillzSalesSums {
+  sold: string;
+  returned: string;
+  net_sold: string;
+  gross_sales: string;
+  returned_sum: string;
+  net_sales: string;
+  net_profit: string;
+  supply_sum: string;
+  discount: string;
+}
+export interface BillzSales {
+  rows: (BillzSalesSums & { product_id?: string; product_name?: string; sku?: string | null; barcode?: string | null; date?: string })[];
+  total: BillzSalesSums;
 }
