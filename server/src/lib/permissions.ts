@@ -55,6 +55,11 @@ export type Action =
   | 'sales.transfer' // tayyor mahsulot skladidan Sotuv bo'limiga o'tkazma yuborish / o'chirish
   | 'sales.accept' // o'tkazmani qabul qilish / rad etish (Sotuv bo'limi)
   | 'sales.pay' // Sotuv bo'limining ishlab chiqarishga to'lovlari
+  | 'hr.read' // HR: xodimlar, tabel, ish nazorati, nachisleniya, vedomost
+  | 'hr.write' // bo'limlar, xodim qabul / bo'shatish, oylik, tabel, bonus
+  | 'hr.work' // ish nazorati (ishbay) kiritish — xodimlar va ish turlarini ko'radi, maoshni emas
+  | 'hr.rates' // ish turlari va narxlari
+  | 'hr.pay' // xodimga to'lov (avans, bank)
   | 'billz.read' // Billz'dan olingan qoldiq va sotuv, qo'lda yangilash
   | 'billz.manage' // Billz kaliti va sozlamalari
   | 'reports.read'; // hisobotlar (ABC tahlil...)
@@ -84,6 +89,11 @@ const MATRIX: Record<Action, Role[]> = {
   'sales.transfer': ['admin', 'sklad'],
   'sales.accept': ['admin', 'sotuv'],
   'sales.pay': ['admin', 'buxgalter', 'kassir'],
+  'hr.read': ['admin', 'rahbar', 'hr', 'buxgalter', 'kassir'],
+  'hr.write': ['admin', 'hr'],
+  'hr.work': ['admin', 'hr', 'tsex'],
+  'hr.rates': ['admin', 'rahbar', 'hr'],
+  'hr.pay': ['admin', 'buxgalter', 'kassir'],
   'billz.read': ['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk'],
   'billz.manage': ['admin'],
   'reports.read': ['admin', 'rahbar', 'buxgalter', 'sotuv'],

@@ -67,6 +67,11 @@ export const can = {
   salesTransfer: has(['admin', 'sklad']),
   salesAccept: has(['admin', 'sotuv']),
   salesPay: has(['admin', 'buxgalter', 'kassir']),
+  hrRead: has(['admin', 'rahbar', 'hr', 'buxgalter', 'kassir']),
+  hrWrite: has(['admin', 'hr']),
+  hrWork: has(['admin', 'hr', 'tsex']),
+  hrRates: has(['admin', 'rahbar', 'hr']),
+  hrPay: has(['admin', 'buxgalter', 'kassir']),
   billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
   billzManage: has(['admin']),
   reportsRead: has(['admin', 'rahbar', 'buxgalter', 'sotuv']),
@@ -763,4 +768,91 @@ export interface SalesLedger {
   rows: { date: string; kind: 'transfer' | 'payment'; ref_id: number; note: string | null; debit: string; credit: string; cost: string; qty: number | null; balance: string }[];
   totals: { debit: string; credit: string; closing: string; cost: string; margin: string };
   pending: { count: number; amount_uzs: string };
+}
+
+// ---------- HR ----------
+export interface HrDepartment { id: number; name: string; producer_id: number | null; producer_name: string | null; is_active: boolean; employees: number }
+export interface Employee {
+  id: number;
+  full_name: string;
+  department_id: number;
+  department_name: string;
+  brigade: string | null;
+  position: string | null;
+  schedule: string | null;
+  work_mode: 'full' | 'part';
+  gender: 'erkak' | 'ayol' | null;
+  phone: string | null;
+  hired_on: string;
+  fired_on: string | null;
+  fire_reason: string | null;
+  note: string | null;
+}
+export interface EmployeeSalary { id: number; valid_from: string; amount: string; norm_hours: string; hourly: string; note: string | null; created_by_name: string | null }
+export interface EmployeeDetail extends Employee { salaries: EmployeeSalary[] }
+export interface TimesheetRow {
+  employee_id: number;
+  full_name: string;
+  position: string | null;
+  brigade: string | null;
+  home_department_name: string;
+  extra_worker: boolean;
+  id: number | null;
+  absent: boolean | null;
+  reason: string | null;
+  came_at: string | null;
+  left_at: string | null;
+  extra_hours: string | null;
+  hours: string | null;
+  note: string | null;
+}
+export interface TimesheetMonth {
+  days: string[];
+  rows: { employee_id: number; full_name: string; position: string | null; brigade: string | null; cells: Record<string, { hours: number; absent: boolean; reason: string | null }>; hours: number; days: number; absent: number }[];
+  totals: Record<string, number>;
+  hours: number;
+}
+export interface WorkType { id: number; department_id: number; department_name: string; category: string; name: string; is_active: boolean; price: string; price_from: string | null }
+export interface WorkPrice { id: number; valid_from: string; price: string; created_by_name: string | null }
+export interface WorkLog {
+  id: number;
+  work_date: string;
+  employee_id: number;
+  full_name: string;
+  department_name: string;
+  category: string;
+  work_name: string;
+  qty: number;
+  price: string;
+  amount: string;
+  partiya_no: string | null;
+  note: string | null;
+  created_by_name: string | null;
+}
+export type AdjKind = 'bonus' | 'penalty' | 'other';
+export interface HrAdjustment { id: number; adj_date: string; employee_id: number; full_name: string; department_name: string; kind: AdjKind; amount: string; note: string | null; created_by_name: string | null }
+export interface HrPayment { id: number; pay_date: string; employee_id: number; full_name: string; department_name: string; method: 'naqd' | 'bank'; amount: string; note: string | null; created_by_name: string | null }
+type Sums = { salary: string; piece: string; bonus: string; penalty: string; accrued: string; cash: string; bank: string };
+export interface PayrollRow extends Sums {
+  employee_id: number;
+  full_name: string;
+  position: string | null;
+  brigade: string | null;
+  department_name: string;
+  fired_on: string | null;
+  days: number;
+  absent_days: number;
+  hours: string;
+  opening: string;
+  other: string;
+  closing: string;
+}
+export interface Payroll { rows: PayrollRow[]; totals: Record<'opening' | 'salary' | 'piece' | 'bonus' | 'other' | 'penalty' | 'accrued' | 'cash' | 'bank' | 'closing', string> }
+export interface EmployeeStatement {
+  employee: Employee;
+  attendance: { days: number; absent_days: number; hours: string };
+  works: { category: string; work_name: string; price: string; qty: number; amount: string }[];
+  rows: (Sums & { date: string; balance: string })[];
+  opening: string;
+  totals: Sums & { closing: string };
 }

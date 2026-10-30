@@ -53,3 +53,9 @@ export const requireAction = (action: Action) => (req: Request, _res: Response, 
   if (!can(ctxOf(req).role, action)) throw forbidden();
   next();
 };
+
+/** Berilgan amallardan kamida bittasiga ruxsat bo'lsa o'tkazadi */
+export const requireAnyAction = (...actions: Action[]) => (req: Request, _res: Response, next: NextFunction) => {
+  if (!actions.some((a) => can(ctxOf(req).role, a))) throw forbidden();
+  next();
+};

@@ -22,6 +22,8 @@ import { OtkFinalPage, SpisaniyaPage, TayyorPage } from './pages/OtkFinal';
 import { BillzSalesPage, BillzSettingsPage, BillzStockPage } from './pages/Billz';
 import { AbcPage } from './pages/Reports';
 import { SalesLedgerPage, SalesPrixodPage, TransferPage } from './pages/Sales';
+import { HrEmployeePage, HrEmployeesPage } from './pages/Hr';
+import { HrMoneyPage, HrPayrollPage, HrTabelInputPage, HrTabelPage, HrWorkPage, HrWorkTypesPage } from './pages/HrWork';
 
 interface NavItem {
   to: string;
@@ -112,6 +114,18 @@ const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
     biz: 'Umumiy',
     numbered: false,
     groups: [
+      [
+        'HR',
+        [
+          { to: '/hr/xodimlar', label: 'Xodimlar', show: (r) => can.hrRead(r) },
+          { to: '/hr/tabel-kiritish', label: 'Tabel kiritish', show: (r) => can.hrRead(r) },
+          { to: '/hr/tabel', label: 'Tabel', show: (r) => can.hrRead(r) },
+          { to: '/hr/ish-nazorati', label: 'Ish nazorati', show: (r) => can.hrRead(r) || can.hrWork(r) },
+          { to: '/hr/ish-turlari', label: 'Ish turlari va narxlar', show: (r) => can.hrRead(r) || can.hrWork(r) },
+          { to: '/hr/bonus-tolov', label: "Bonus va to'lovlar", show: (r) => can.hrRead(r) },
+          { to: '/hr/vedomost', label: 'Vedomost', show: (r) => can.hrRead(r) },
+        ],
+      ],
       ['Hisobotlar', [{ to: '/hisobot/abc', label: 'ABC tahlil', show: (r) => can.reportsRead(r) }]],
       ["Ma'lumotnomalar",[{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
       [
@@ -264,6 +278,14 @@ export function App() {
         {can.billzRead(me.role) && <Route path="/billz/sotuv" element={<BillzSalesPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sozlamalar" element={<BillzSettingsPage />} />}
         {can.reportsRead(me.role) && <Route path="/hisobot/abc" element={<AbcPage />} />}
+        {can.hrRead(me.role) && <Route path="/hr/xodimlar" element={<HrEmployeesPage />} />}
+        {can.hrRead(me.role) && <Route path="/hr/xodim/:id" element={<HrEmployeePage />} />}
+        {can.hrRead(me.role) && <Route path="/hr/tabel-kiritish" element={<HrTabelInputPage />} />}
+        {can.hrRead(me.role) && <Route path="/hr/tabel" element={<HrTabelPage />} />}
+        {(can.hrRead(me.role) || can.hrWork(me.role)) && <Route path="/hr/ish-nazorati" element={<HrWorkPage />} />}
+        {(can.hrRead(me.role) || can.hrWork(me.role)) && <Route path="/hr/ish-turlari" element={<HrWorkTypesPage />} />}
+        {can.hrRead(me.role) && <Route path="/hr/bonus-tolov" element={<HrMoneyPage />} />}
+        {can.hrRead(me.role) && <Route path="/hr/vedomost" element={<HrPayrollPage />} />}
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}

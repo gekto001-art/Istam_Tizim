@@ -48,4 +48,5 @@ docker compose up -d --build                                  # serverda: hammas
   - [ ] 4.3 — agentlar va ulgurji: mijozlar, nakladnoy, nasiya, vozvrat
   - [ ] 4.4 — ikki biznes foydasi alohida; kassa, oldi-berdi
 - [ ] 5 — HR, P&L / Balans / Cash Flow, analitika
+  - [x] 5.1 — HR (`routes/hr.ts`): xodimlar, tabel, ish nazorati (ishbay) va narxlar, oylik, bonus, to'lovlar, vedomost, akt sverka
 - [ ] 6 — Google Sheets'dan ma'lumot ko'chirish
