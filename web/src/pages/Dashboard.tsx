@@ -24,7 +24,7 @@ const MODULES: { biz: (typeof BIZ)[number]; name: string; what: string; stage: S
   { biz: 'Sotuv bo\'limi', name: 'Agentlar va ulgurji', what: 'Agentlar (Abu Saxiy, Safo, G\'ulom), mijozlar, nakladnoy, nasiya, vozvrat', stage: 'plan' },
   { biz: 'Umumiy', name: 'Asos', what: 'Kirish, rollar, foydalanuvchilar, audit, zaxira nusxa', stage: 'ready' },
   { biz: 'Umumiy', name: 'Hisobotlar', what: 'ABC tahlil (marja, sotuv soni, summa) — tayyor; P&L har biznes uchun alohida, Balans, Cash Flow (avto)', stage: 'next' },
-  { biz: 'Umumiy', name: 'Kassa', what: 'Pul oqimlari', stage: 'plan' },
+  { biz: 'Umumiy', name: 'Kassa', what: 'Hamyonlar (ko\'p valyutali), kirim / chiqim, ichki transfer, ayriboshlash, avans-hisobot, kassa hisobot', stage: 'ready' },
   { biz: 'Umumiy', name: 'Oldi-berdi (DT-KT)', what: 'Kontragentlar bilan hisob-kitob (avto)', stage: 'plan' },
   { biz: 'Umumiy', name: 'HR', what: 'Xodimlar (qabul / bo\'shatish), tabel, ish nazorati (ishbay) va narxlar, oylik, bonus, to\'lovlar, vedomost, akt sverka', stage: 'ready' },
   { biz: 'Umumiy', name: 'Analitika', what: 'Dashboard va grafiklar', stage: 'plan' },

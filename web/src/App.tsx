@@ -23,6 +23,7 @@ import { BillzSalesPage, BillzSettingsPage, BillzStockPage } from './pages/Billz
 import { AbcPage } from './pages/Reports';
 import { SalesLedgerPage, SalesPrixodPage, TransferPage } from './pages/Sales';
 import { HrEmployeePage, HrEmployeesPage } from './pages/Hr';
+import { CashAvansPage, CashInputPage, CashJournalPage, CashReportPage, CashSettingsPage } from './pages/Cash';
 import { HrMoneyPage, HrPayrollPage, HrTabelInputPage, HrTabelPage, HrWorkPage, HrWorkTypesPage } from './pages/HrWork';
 
 interface NavItem {
@@ -114,6 +115,16 @@ const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
     biz: 'Umumiy',
     numbered: false,
     groups: [
+      [
+        'Kassa',
+        [
+          { to: '/kassa/kiritish', label: 'Kassa kiritish', show: (r) => can.cashRead(r) },
+          { to: '/kassa/jurnal', label: 'Kassa jurnali', show: (r) => can.cashRead(r) },
+          { to: '/kassa/hisobot', label: 'Kassa hisobot', show: (r) => can.cashRead(r) },
+          { to: '/kassa/avans', label: 'Avans-hisobot', show: (r) => can.cashRead(r) },
+          { to: '/kassa/sozlamalar', label: 'Hamyonlar va elementlar', show: (r) => can.cashRead(r) },
+        ],
+      ],
       [
         'HR',
         [
@@ -278,6 +289,11 @@ export function App() {
         {can.billzRead(me.role) && <Route path="/billz/sotuv" element={<BillzSalesPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sozlamalar" element={<BillzSettingsPage />} />}
         {can.reportsRead(me.role) && <Route path="/hisobot/abc" element={<AbcPage />} />}
+        {can.cashRead(me.role) && <Route path="/kassa/kiritish" element={<CashInputPage />} />}
+        {can.cashRead(me.role) && <Route path="/kassa/jurnal" element={<CashJournalPage />} />}
+        {can.cashRead(me.role) && <Route path="/kassa/hisobot" element={<CashReportPage />} />}
+        {can.cashRead(me.role) && <Route path="/kassa/avans" element={<CashAvansPage />} />}
+        {can.cashRead(me.role) && <Route path="/kassa/sozlamalar" element={<CashSettingsPage />} />}
         {can.hrRead(me.role) && <Route path="/hr/xodimlar" element={<HrEmployeesPage />} />}
         {can.hrRead(me.role) && <Route path="/hr/xodim/:id" element={<HrEmployeePage />} />}
         {can.hrRead(me.role) && <Route path="/hr/tabel-kiritish" element={<HrTabelInputPage />} />}

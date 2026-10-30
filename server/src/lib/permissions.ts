@@ -60,6 +60,9 @@ export type Action =
   | 'hr.work' // ish nazorati (ishbay) kiritish — xodimlar va ish turlarini ko'radi, maoshni emas
   | 'hr.rates' // ish turlari va narxlari
   | 'hr.pay' // xodimga to'lov (avans, bank)
+  | 'cash.read' // kassa: jurnal, qoldiqlar, hisobot, avans-hisobot
+  | 'cash.write' // kassa yozuvlari (kirim, chiqim, transfer, ayriboshlash)
+  | 'cash.manage' // hamyonlar va xarajat elementlari
   | 'billz.read' // Billz'dan olingan qoldiq va sotuv, qo'lda yangilash
   | 'billz.manage' // Billz kaliti va sozlamalari
   | 'reports.read'; // hisobotlar (ABC tahlil...)
@@ -94,6 +97,9 @@ const MATRIX: Record<Action, Role[]> = {
   'hr.work': ['admin', 'hr', 'tsex'],
   'hr.rates': ['admin', 'rahbar', 'hr'],
   'hr.pay': ['admin', 'buxgalter', 'kassir'],
+  'cash.read': ['admin', 'rahbar', 'buxgalter', 'kassir'],
+  'cash.write': ['admin', 'buxgalter', 'kassir'],
+  'cash.manage': ['admin', 'buxgalter'],
   'billz.read': ['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk'],
   'billz.manage': ['admin'],
   'reports.read': ['admin', 'rahbar', 'buxgalter', 'sotuv'],

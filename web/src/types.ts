@@ -72,6 +72,9 @@ export const can = {
   hrWork: has(['admin', 'hr', 'tsex']),
   hrRates: has(['admin', 'rahbar', 'hr']),
   hrPay: has(['admin', 'buxgalter', 'kassir']),
+  cashRead: has(['admin', 'rahbar', 'buxgalter', 'kassir']),
+  cashWrite: has(['admin', 'buxgalter', 'kassir']),
+  cashManage: has(['admin', 'buxgalter']),
   billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
   billzManage: has(['admin']),
   reportsRead: has(['admin', 'rahbar', 'buxgalter', 'sotuv']),
@@ -856,3 +859,52 @@ export interface EmployeeStatement {
   opening: string;
   totals: Sums & { closing: string };
 }
+
+// ---------- Kassa ----------
+export type CashCurrency = 'UZS' | 'USD' | 'CNY' | 'EUR' | 'RUB';
+export interface CashWallet { id: number; name: string; business: 'moliya' | 'tijorat' | 'ishlab'; kind: 'naqd' | 'karta' | 'bank' | 'avans' | 'boshqa'; is_active: boolean; sort: number }
+export interface CashOpType { id: number; name: string; flow: 'in' | 'out' | 'both'; special: 'opening' | 'transfer' | 'exchange' | 'expense' | null; is_active: boolean }
+export interface CashCenter { id: number; kind: 'PC' | 'CC' | 'IC'; name: string; code: string | null; is_active: boolean }
+export interface CashItem { id: number; code: number; name: string; is_active: boolean; group_code: number; group_name: string | null }
+export interface CashMeta {
+  wallets: CashWallet[];
+  op_types: CashOpType[];
+  centers: CashCenter[];
+  items: CashItem[];
+  counterparties: string[];
+  responsibles: string[];
+  departments: string[];
+}
+export interface CashEntry {
+  id: number;
+  entry_date: string;
+  wallet_id: number;
+  wallet_name: string;
+  op_name: string;
+  special: CashOpType['special'];
+  center_name: string | null;
+  center_kind: string | null;
+  item_code: number | null;
+  item_name: string | null;
+  counterparty: string | null;
+  department: string | null;
+  responsible: string | null;
+  note: string | null;
+  currency: CashCurrency;
+  rate: string;
+  amount_in: string;
+  amount_out: string;
+  net_uzs: string;
+  period: string | null;
+  partiya_no: string | null;
+  pair_id: number | null;
+  pair_wallet: string | null;
+  created_by_name: string | null;
+}
+export interface CashBalance { wallet_id: number; wallet_name: string; kind: string; business: string; currency: CashCurrency; balance: string }
+export interface CashReport {
+  wallets: { wallet_id: number; wallet_name: string; kind: string; business: string; currency: CashCurrency; opening: string; sales_in: string; other_in: string; out: string; closing: string }[];
+  by_op: { op_type_id: number; op_name: string; special: string | null; currency: CashCurrency; amount_in: string; amount_out: string; net: string; net_uzs: string }[];
+  by_item: { item_id: number; code: number; name: string; group_code: number; group_name: string | null; center_kind: string | null; center_name: string | null; amount_uzs: string }[];
+}
+export interface CashAvans { responsible: string; currency: CashCurrency; opening: string; given: string; reported: string; closing: string }
