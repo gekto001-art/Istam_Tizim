@@ -1,4 +1,5 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { can, type Role } from './types';
 import { LoginPage, ChangePasswordPage } from './pages/Login';
@@ -125,9 +126,42 @@ const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
   },
 ];
 
+const END = ['/', '/kroy', '/tsex'];
+const isActive = (to: string, path: string) => (END.includes(to) ? path === to : path === to || path.startsWith(`${to}/`));
+
+/** Menyuda ochiq bo'limlar (biznes va guruh) — shu brauzerda eslab qolinadi */
+const OPEN_KEY = 'istam.nav.open';
+function loadOpen(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+
 function Layout({ children }: { children: React.ReactNode }) {
   const { me, logout } = useAuth();
+  const { pathname } = useLocation();
+  const [open, setOpen] = useState(loadOpen);
+  // ochilgan sahifaning biznesi va guruhi doim ochiq
+  useEffect(() => {
+    const add: Record<string, boolean> = {};
+    for (const { biz, groups } of NAV) {
+      for (const [g, items] of groups) {
+        if (biz && items.some((i) => isActive(i.to, pathname))) Object.assign(add, { [biz]: true, [`${biz}/${g}`]: true });
+      }
+    }
+    setOpen((o) => (Object.keys(add).every((k) => o[k]) ? o : { ...o, ...add }));
+  }, [pathname]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_KEY, JSON.stringify(open));
+    } catch {
+      /* saqlanmasa ham menyu ishlaydi */
+    }
+  }, [open]);
   if (!me) return null;
+  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   return (
     <div className="app">
       <aside>
@@ -137,21 +171,37 @@ function Layout({ children }: { children: React.ReactNode }) {
         </div>
         <nav aria-label="Asosiy menyu" style={{ display: 'contents' }}>
           {NAV.map(({ biz, numbered, groups }) => {
-            const vis = groups.map(([g, items], i) => [numbered ? `${i + 1}. ${g}` : g,items.filter((x) => x.show(me.role))] as const).filter(([, items]) => items.length);
+            const vis = groups
+              .map(([g, items], i) => ({ key: `${biz}/${g}`, label: numbered ? `${i + 1}. ${g}` : g, items: items.filter((x) => x.show(me.role)) }))
+              .filter((g) => g.items.length);
             if (!vis.length) return null;
+            const bizOpen = !biz || !!open[biz];
             return (
               <div key={biz ?? ''} style={{ display: 'contents' }}>
-                {biz && <div className="nb">{biz}</div>}
-                {vis.map(([group, items]) => (
-                  <div key={group} style={{ display: 'contents' }}>
-                    <div className="ng">{group}</div>
-                    {items.map((i) => (
-                      <NavLink key={i.to} className="nav" to={i.to} end={['/', '/kroy', '/tsex'].includes(i.to)}>
-                        {i.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                ))}
+                {biz && (
+                  <button className="nb" aria-expanded={bizOpen} onClick={() => toggle(biz)}>
+                    {biz}
+                  </button>
+                )}
+                {vis.map((g) => {
+                  const grOpen = !biz || !!open[g.key];
+                  return (
+                    <div key={g.key} style={{ display: 'contents' }}>
+                      {biz ? (
+                        <button className={`ng${bizOpen ? '' : ' shut'}`} aria-expanded={grOpen} onClick={() => toggle(g.key)}>
+                          {g.label}
+                        </button>
+                      ) : (
+                        <div className="ng">{g.label}</div>
+                      )}
+                      {g.items.map((i) => (
+                        <NavLink key={i.to} className={`nav${bizOpen && grOpen ? '' : ' shut'}`} to={i.to} end={END.includes(i.to)}>
+                          {i.label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
