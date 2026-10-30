@@ -27,82 +27,102 @@ interface NavItem {
   label: string;
   show: (r: Role) => boolean;
 }
-const NAV: [string, NavItem[]][] = [
-  ['Asosiy', [{ to: '/', label: 'Dashboard', show: () => true }]],
-  ['Innovatsion bo\'lim', [{ to: '/orders', label: 'Zakazlar', show: (r) => can.ordersRead(r) }]],
-  [
-    'Ta\'minot',
-    [
-      { to: '/supply', label: 'Xomashyo zakaz', show: (r) => can.purchaseRead(r) },
-      { to: '/purchases', label: 'Postavshik kelishuv', show: (r) => can.purchaseRead(r) },
-      { to: '/tracking', label: "Status o'zgartirish", show: (r) => can.purchaseRead(r) },
+type NavGroup = [string, NavItem[]];
+/** Menyu: ikki biznes (ishlab chiqarish → Sotuv bo'limi) jarayon tartibida, keyin umumiy bo'limlar. Biznes ichidagi guruhlar raqamlanadi. */
+const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
+  { biz: null, numbered: false, groups: [['Asosiy', [{ to: '/', label: 'Dashboard', show: () => true }]]] },
+  {
+    biz: 'Ishlab chiqarish',
+    numbered: true,
+    groups: [
+      ["Innovatsion bo'lim",[{ to: '/orders', label: 'Zakazlar', show: (r) => can.ordersRead(r) }]],
+      [
+        "Ta'minot",
+        [
+          { to: '/supply', label: 'Xomashyo zakaz', show: (r) => can.purchaseRead(r) },
+          { to: '/purchases', label: 'Postavshik kelishuv', show: (r) => can.purchaseRead(r) },
+          { to: '/tracking', label: "Status o'zgartirish", show: (r) => can.purchaseRead(r) },
+        ],
+      ],
+      [
+        'Xomashyo skladi',
+        [
+          { to: '/stock/prixod-taminot', label: "Prixod (Ta'minot orqali)", show: (r) => can.stockRead(r) },
+          { to: '/stock/prixod', label: 'Prixod', show: (r) => can.stockRead(r) },
+          { to: '/stock/zayavka', label: 'Rasxod (Zayavka)', show: (r) => can.stockRead(r) },
+          { to: '/stock/rasxod', label: 'Rasxod', show: (r) => can.stockRead(r) },
+          { to: '/stock/sotuv', label: 'Sotuv', show: (r) => can.stockRead(r) },
+          { to: '/stock/ostatka', label: 'Ostatka', show: (r) => can.stockRead(r) },
+          { to: '/stock/nakladnoy', label: 'Nakladnoy', show: (r) => can.stockRead(r) },
+        ],
+      ],
+      [
+        'Bichuv (kroy)',
+        [
+          { to: '/kroy', label: 'Kroy', show: (r) => can.kroyRead(r) },
+          { to: '/kroy/otk', label: 'Sifat nazorati', show: (r) => can.kroyRead(r) },
+          { to: '/kroy/brak', label: 'OTK Brak', show: (r) => can.kroyRead(r) },
+          { to: '/kroy/yarim-tayyor', label: 'Kroyda yarim tayyor', show: (r) => can.kroyRead(r) },
+          { to: '/kroy/rasxod', label: 'Kroydan rasxod', show: (r) => can.kroyRead(r) },
+          { to: '/kroy/yopilgan', label: 'Yopilgan zakazlar', show: (r) => can.kroyRead(r) },
+        ],
+      ],
+      [
+        'Tsex',
+        [
+          { to: '/tsex/prixod', label: 'Prixod (kroydan)', show: (r) => can.tsexRead(r) },
+          { to: '/tsex', label: 'Ishlab chiqarish', show: (r) => can.tsexRead(r) },
+          { to: '/tsex/ostatka', label: 'Ostatka', show: (r) => can.tsexRead(r) },
+          { to: '/tsex/xa', label: 'Ish/Chiq Xa', show: (r) => can.tsexRead(r) },
+        ],
+      ],
+      [
+        'OTK va tayyor mahsulot',
+        [
+          { to: '/otk', label: 'OTK (tayyor mahsulot)', show: (r) => can.fgRead(r) },
+          { to: '/spisaniya', label: 'Spisaniya (P&L)', show: (r) => can.fgRead(r) },
+          { to: '/tayyor', label: 'Tayyor mahsulot skladi', show: (r) => can.fgRead(r) },
+          { to: '/sotuvga', label: "Sotuv bo'limiga o'tkazma", show: (r) => can.salesRead(r) },
+        ],
+      ],
     ],
-  ],
-  [
-    'Xomashyo skladi',
-    [
-      { to: '/stock/prixod-taminot', label: "Prixod (Ta'minot orqali)", show: (r) => can.stockRead(r) },
-      { to: '/stock/prixod', label: 'Prixod', show: (r) => can.stockRead(r) },
-      { to: '/stock/zayavka', label: 'Rasxod (Zayavka)', show: (r) => can.stockRead(r) },
-      { to: '/stock/rasxod', label: 'Rasxod', show: (r) => can.stockRead(r) },
-      { to: '/stock/sotuv', label: 'Sotuv', show: (r) => can.stockRead(r) },
-      { to: '/stock/ostatka', label: 'Ostatka', show: (r) => can.stockRead(r) },
-      { to: '/stock/nakladnoy', label: 'Nakladnoy', show: (r) => can.stockRead(r) },
+  },
+  {
+    biz: "Sotuv bo'limi",
+    numbered: true,
+    groups: [
+      [
+        'Ishlab chiqarishdan',
+        [
+          { to: '/sotuv/prixod', label: 'Prixod (qabul qilish)', show: (r) => can.salesRead(r) },
+          { to: '/sotuv/hisob', label: 'Ishlab chiqarish bilan hisob', show: (r) => can.salesRead(r) },
+        ],
+      ],
+      [
+        "Do'konlar (Billz)",
+        [
+          { to: '/billz/qoldiq', label: 'Billz qoldiq', show: (r) => can.billzRead(r) },
+          { to: '/billz/sotuv', label: 'Billz sotuv', show: (r) => can.billzRead(r) },
+        ],
+      ],
     ],
-  ],
-  [
-    'Bichuv (kroy)',
-    [
-      { to: '/kroy', label: 'Kroy', show: (r) => can.kroyRead(r) },
-      { to: '/kroy/otk', label: 'Sifat nazorati', show: (r) => can.kroyRead(r) },
-      { to: '/kroy/brak', label: 'OTK Brak', show: (r) => can.kroyRead(r) },
-      { to: '/kroy/yarim-tayyor', label: 'Kroyda yarim tayyor', show: (r) => can.kroyRead(r) },
-      { to: '/kroy/rasxod', label: 'Kroydan rasxod', show: (r) => can.kroyRead(r) },
-      { to: '/kroy/yopilgan', label: 'Yopilgan zakazlar', show: (r) => can.kroyRead(r) },
+  },
+  {
+    biz: 'Umumiy',
+    numbered: false,
+    groups: [
+      ['Hisobotlar', [{ to: '/hisobot/abc', label: 'ABC tahlil', show: (r) => can.reportsRead(r) }]],
+      ["Ma'lumotnomalar",[{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
+      [
+        'Tizim',
+        [
+          { to: '/users', label: 'Foydalanuvchilar', show: (r) => can.users(r) },
+          { to: '/audit', label: 'Audit log', show: (r) => can.audit(r) },
+          { to: '/billz/sozlamalar', label: 'Billz sozlamalari', show: (r) => can.billzManage(r) },
+        ],
+      ],
     ],
-  ],
-  [
-    'Tsex (ishlab chiqarish)',
-    [
-      { to: '/tsex/prixod', label: 'Prixod (kroydan)', show: (r) => can.tsexRead(r) },
-      { to: '/tsex', label: 'Ishlab chiqarish', show: (r) => can.tsexRead(r) },
-      { to: '/tsex/ostatka', label: 'Ostatka', show: (r) => can.tsexRead(r) },
-      { to: '/tsex/xa', label: 'Ish/Chiq Xa', show: (r) => can.tsexRead(r) },
-    ],
-  ],
-  [
-    'OTK va tayyor mahsulot',
-    [
-      { to: '/otk', label: 'OTK (tayyor mahsulot)', show: (r) => can.fgRead(r) },
-      { to: '/tayyor', label: 'Tayyor mahsulot skladi', show: (r) => can.fgRead(r) },
-      { to: '/spisaniya', label: 'Spisaniya (P&L)', show: (r) => can.fgRead(r) },
-      { to: '/sotuvga', label: "Sotuv bo'limiga o'tkazma", show: (r) => can.salesRead(r) },
-    ],
-  ],
-  [
-    "Sotuv bo'limi",
-    [
-      { to: '/sotuv/prixod', label: 'Prixod (ishlab chiqarishdan)', show: (r) => can.salesRead(r) },
-      { to: '/sotuv/hisob', label: 'Ishlab chiqarish bilan hisob', show: (r) => can.salesRead(r) },
-    ],
-  ],
-  [
-    'Billz',
-    [
-      { to: '/billz/qoldiq', label: 'Billz qoldiq', show: (r) => can.billzRead(r) },
-      { to: '/billz/sotuv', label: 'Billz sotuv', show: (r) => can.billzRead(r) },
-      { to: '/billz/sozlamalar', label: 'Billz sozlamalari', show: (r) => can.billzManage(r) },
-    ],
-  ],
-  ['Hisobotlar', [{ to: '/hisobot/abc', label: 'ABC tahlil', show: (r) => can.reportsRead(r) }]],
-  ['Ma\'lumotnomalar', [{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
-  [
-    'Tizim',
-    [
-      { to: '/users', label: 'Foydalanuvchilar', show: (r) => can.users(r) },
-      { to: '/audit', label: 'Audit log', show: (r) => can.audit(r) },
-    ],
-  ],
+  },
 ];
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -116,16 +136,21 @@ function Layout({ children }: { children: React.ReactNode }) {
           <small>Bolalar kiyimlari · boshqaruv tizimi</small>
         </div>
         <nav aria-label="Asosiy menyu" style={{ display: 'contents' }}>
-          {NAV.map(([group, items]) => {
-            const vis = items.filter((i) => i.show(me.role));
+          {NAV.map(({ biz, numbered, groups }) => {
+            const vis = groups.map(([g, items], i) => [numbered ? `${i + 1}. ${g}` : g,items.filter((x) => x.show(me.role))] as const).filter(([, items]) => items.length);
             if (!vis.length) return null;
             return (
-              <div key={group} style={{ display: 'contents' }}>
-                <div className="ng">{group}</div>
-                {vis.map((i) => (
-                  <NavLink key={i.to} className="nav" to={i.to} end={['/', '/kroy', '/tsex'].includes(i.to)}>
-                    {i.label}
-                  </NavLink>
+              <div key={biz ?? ''} style={{ display: 'contents' }}>
+                {biz && <div className="nb">{biz}</div>}
+                {vis.map(([group, items]) => (
+                  <div key={group} style={{ display: 'contents' }}>
+                    <div className="ng">{group}</div>
+                    {items.map((i) => (
+                      <NavLink key={i.to} className="nav" to={i.to} end={['/', '/kroy', '/tsex'].includes(i.to)}>
+                        {i.label}
+                      </NavLink>
+                    ))}
+                  </div>
                 ))}
               </div>
             );
