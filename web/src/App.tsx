@@ -20,6 +20,7 @@ import { TsexOstatkaPage, TsexPrixodPage, TsexProductionPage, TsexXaPage } from 
 import { OtkFinalPage, SpisaniyaPage, TayyorPage } from './pages/OtkFinal';
 import { BillzSalesPage, BillzSettingsPage, BillzStockPage } from './pages/Billz';
 import { AbcPage } from './pages/Reports';
+import { SalesLedgerPage, SalesPrixodPage, TransferPage } from './pages/Sales';
 
 interface NavItem {
   to: string;
@@ -75,6 +76,14 @@ const NAV: [string, NavItem[]][] = [
       { to: '/otk', label: 'OTK (tayyor mahsulot)', show: (r) => can.fgRead(r) },
       { to: '/tayyor', label: 'Tayyor mahsulot skladi', show: (r) => can.fgRead(r) },
       { to: '/spisaniya', label: 'Spisaniya (P&L)', show: (r) => can.fgRead(r) },
+      { to: '/sotuvga', label: "Sotuv bo'limiga o'tkazma", show: (r) => can.salesRead(r) },
+    ],
+  ],
+  [
+    "Sotuv bo'limi",
+    [
+      { to: '/sotuv/prixod', label: 'Prixod (ishlab chiqarishdan)', show: (r) => can.salesRead(r) },
+      { to: '/sotuv/hisob', label: 'Ishlab chiqarish bilan hisob', show: (r) => can.salesRead(r) },
     ],
   ],
   [
@@ -173,6 +182,9 @@ export function App() {
         {can.fgRead(me.role) && <Route path="/otk" element={<OtkFinalPage />} />}
         {can.fgRead(me.role) && <Route path="/tayyor" element={<TayyorPage />} />}
         {can.fgRead(me.role) && <Route path="/spisaniya" element={<SpisaniyaPage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuvga" element={<TransferPage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuv/prixod" element={<SalesPrixodPage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuv/hisob" element={<SalesLedgerPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/qoldiq" element={<BillzStockPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sotuv" element={<BillzSalesPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sozlamalar" element={<BillzSettingsPage />} />}

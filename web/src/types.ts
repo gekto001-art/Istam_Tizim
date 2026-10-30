@@ -51,6 +51,7 @@ export const can = {
   ordersWrite: has(['admin', 'innovatsiya']),
   ordersConfirm: has(['admin', 'innovatsiya']),
   ordersReopen: has(['admin', 'rahbar']),
+  ordersPrice: has(['admin', 'rahbar', 'innovatsiya']),
   purchaseRead: has(['admin', 'rahbar', 'taminot', 'innovatsiya', 'buxgalter', 'sklad']),
   purchaseWrite: has(['admin', 'taminot']),
   purchaseApprove: has(['admin', 'rahbar', 'taminot']),
@@ -62,6 +63,10 @@ export const can = {
   tsexRead: has(['admin', 'rahbar', 'tsex', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'buxgalter']),
   tsexWrite: has(['admin', 'tsex']),
   fgRead: has(['admin', 'rahbar', 'otk', 'sklad', 'sotuv', 'tsex', 'bichuv', 'innovatsiya', 'buxgalter']),
+  salesRead: has(['admin', 'rahbar', 'sotuv', 'sklad', 'buxgalter', 'kassir', 'innovatsiya']),
+  salesTransfer: has(['admin', 'sklad']),
+  salesAccept: has(['admin', 'sotuv']),
+  salesPay: has(['admin', 'buxgalter', 'kassir']),
   billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
   billzManage: has(['admin']),
   reportsRead: has(['admin', 'rahbar', 'buxgalter', 'sotuv']),
@@ -112,6 +117,8 @@ export interface Order extends Omit<OrderRow, 'qty' | 'colors'> {
   producer_id: number | null;
   unit: string;
   note: string | null;
+  sale_price1: string | null;
+  sale_price2: string | null;
   created_by_name: string | null;
   confirmed_by_name: string | null;
   confirmed_at: string | null;
@@ -637,6 +644,8 @@ export interface FgStock {
   sort2: number;
   total: number;
   avg_cost: string | null;
+  sale_price1: string | null;
+  sale_price2: string | null;
 }
 export interface Writeoff {
   source: 'kroy' | 'otk';
@@ -704,4 +713,54 @@ export interface BillzSalesSums {
 export interface BillzSales {
   rows: (BillzSalesSums & { product_id?: string; product_name?: string; sku?: string | null; barcode?: string | null; date?: string })[];
   total: BillzSalesSums;
+}
+
+// ---------- Sotuv bo'limi (alohida biznes) ----------
+export type TransferStatus = 'sent' | 'accepted' | 'rejected';
+export interface SalesTransferItem {
+  order_id: number;
+  partiya_no: string;
+  product_type_name: string;
+  artikul: string | null;
+  model: string | null;
+  color_id: number;
+  color_name: string;
+  size_id: number;
+  size_name: string;
+  sort: 1 | 2;
+  qty: number;
+  price: string;
+  unit_cost_uzs: string;
+}
+export interface SalesTransfer {
+  id: number;
+  doc_date: string;
+  status: TransferStatus;
+  note: string | null;
+  created_at: string;
+  decided_date: string | null;
+  decided_at: string | null;
+  reject_reason: string | null;
+  created_by_name: string | null;
+  decided_by_name: string | null;
+  qty: number;
+  amount_uzs: string;
+  cost_uzs: string;
+  items: SalesTransferItem[];
+}
+export type PayMethod = 'naqd' | 'plastik' | 'bank';
+export interface SalesPayment {
+  id: number;
+  pay_date: string;
+  amount_uzs: string;
+  method: PayMethod;
+  note: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+export interface SalesLedger {
+  opening: string;
+  rows: { date: string; kind: 'transfer' | 'payment'; ref_id: number; note: string | null; debit: string; credit: string; cost: string; qty: number | null; balance: string }[];
+  totals: { debit: string; credit: string; closing: string; cost: string; margin: string };
+  pending: { count: number; amount_uzs: string };
 }

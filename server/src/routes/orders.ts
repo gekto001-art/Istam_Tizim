@@ -677,9 +677,32 @@ ordersRouter.post('/:id/copy-from', async (req, res) => {
         [id, b.source_id],
       );
       result.works = r.rowCount ?? 0;
+      // Sotuv bo'limiga narx — faqat hali belgilanmagan bo'lsa
+      await db.query(
+        `UPDATE orders o SET sale_price1 = coalesce(o.sale_price1, s.sale_price1), sale_price2 = coalesce(o.sale_price2, s.sale_price2)
+           FROM orders s WHERE o.id = $1 AND s.id = $2`,
+        [id, b.source_id],
+      );
     }
     await audit(db, ctx, 'order', id, 'copy_from', undefined, { source_id: b.source_id, partiya_no: src.partiya_no, ...result });
     return { ...(await orderDetail(db, id)), copy: result };
+  });
+  res.json(data);
+});
+
+// ---------- Sotuv bo'limiga narx (ichki narx) ----------
+/** Tasdiqlangan zakazda ham o'zgartiriladi: narx yuborilgan o'tkazmalarga ta'sir qilmaydi (u yerda o'sha paytdagi narx saqlanadi). */
+ordersRouter.put('/:id/sale-price', requireAction('orders.price'), async (req, res) => {
+  const ctx = ctxOf(req);
+  const id = idParam.parse(req.params.id);
+  const price = z.coerce.number().finite().min(0).max(1e12).nullable();
+  const b = z.object({ sale_price1: price, sale_price2: price }).parse(req.body);
+  const data = await tx(async (db) => {
+    const old = await orderOf(db, id, true);
+    if (old.status === 'cancelled') throw conflict('Zakaz bekor qilingan');
+    await db.query('UPDATE orders SET sale_price1 = $2, sale_price2 = $3 WHERE id = $1', [id, b.sale_price1, b.sale_price2]);
+    await audit(db, ctx, 'order', id, 'sale_price', { sale_price1: old.sale_price1, sale_price2: old.sale_price2 }, b);
+    return orderDetail(db, id);
   });
   res.json(data);
 });

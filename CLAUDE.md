@@ -36,9 +36,16 @@ docker compose up -d --build                                  # serverda: hammas
 
 ## Bosqichlar
 - [x] 0 — asos: kirish, rollar, foydalanuvchilar, audit, Docker, zaxira nusxa
-- [ ] 1 — innovatsion bo'lim: model va zakazni shakllantirish
-- [ ] 2 — zakaz & tracking (ta'minot)
-- [ ] 3 — xomashyo skladi, bichuv, tsex, OTK, tayyor mahsulot
+- [x] 1 — innovatsion bo'lim: model va zakazni shakllantirish
+- [x] 2 — zakaz & tracking (ta'minot)
+- [x] 3 — xomashyo skladi, bichuv, tsex, OTK, tayyor mahsulot; Billz integratsiyasi
 - [ ] 4 — sotuv va agentlar, kassa, oldi-berdi
+  - Sotuv bo'limi — alohida biznes: ishlab chiqarishdan ichki narxda (zakazdagi 1 / 2 sort narxi) oladi,
+    qabul qilingani ishlab chiqarishdan qarz bo'ladi; boshqa postavshiklardan ham tovar oladi;
+    klientlarga Billz do'konlari va agentlar (ulgurji, nasiya) orqali sotadi.
+  - [x] 4.1 — o'tkazma (qabul / rad etish), qarz va to'lovlar (`routes/sales.ts`)
+  - [ ] 4.2 — Sotuv bo'limi skladi (bizdan + boshqa postavshiklardan), Billz bilan solishtirish
+  - [ ] 4.3 — agentlar va ulgurji: mijozlar, nakladnoy, nasiya, vozvrat
+  - [ ] 4.4 — ikki biznes foydasi alohida; kassa, oldi-berdi
 - [ ] 5 — HR, P&L / Balans / Cash Flow, analitika
 - [ ] 6 — Google Sheets'dan ma'lumot ko'chirish

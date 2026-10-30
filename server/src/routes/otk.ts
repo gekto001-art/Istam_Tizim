@@ -115,6 +115,7 @@ otkRouter.get('/stock', async (req, res) => {
   const rows = (
     await pool.query(
       `SELECT m.order_id, o.partiya_no, pt.name AS product_type_name, o.artikul, o.model, m.color_id, c.name AS color_name, m.size_id, s.name AS size_name,
+              o.sale_price1, o.sale_price2,
               coalesce(sum(m.dir * m.qty) FILTER (WHERE m.sort = 1), 0)::int AS sort1,
               coalesce(sum(m.dir * m.qty) FILTER (WHERE m.sort = 2), 0)::int AS sort2,
               sum(m.dir * m.qty)::int AS total,
@@ -122,7 +123,7 @@ otkRouter.get('/stock', async (req, res) => {
          FROM fg_moves m JOIN orders o ON o.id = m.order_id JOIN product_types pt ON pt.id = o.product_type_id
          JOIN colors c ON c.id = m.color_id JOIN sizes s ON s.id = m.size_id
         WHERE ($1::int IS NULL OR m.order_id = $1)
-        GROUP BY m.order_id, o.partiya_no, pt.name, o.artikul, o.model, m.color_id, c.name, m.size_id, s.name, s.sort
+        GROUP BY m.order_id, o.partiya_no, pt.name, o.artikul, o.model, o.sale_price1, o.sale_price2, m.color_id, c.name, m.size_id, s.name, s.sort
        HAVING sum(m.dir * m.qty) <> 0
         ORDER BY m.order_id DESC, lower(c.name), s.sort`,
       [q.order_id ?? null],

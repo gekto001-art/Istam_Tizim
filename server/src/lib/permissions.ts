@@ -39,6 +39,7 @@ export type Action =
   | 'orders.write' // zakaz yaratish va qoralamani tahrirlash (innovatsion bo'lim)
   | 'orders.confirm' // zakazni tasdiqlash — xomashyo ta'minotga ketadi
   | 'orders.reopen' // tasdiqlangan zakazni qoralamaga qaytarish yoki bekor qilish
+  | 'orders.price' // Sotuv bo'limiga narx (1 / 2 sort) — zakaz holatidan qat'i nazar
   | 'purchase.read' // ta'minot: xomashyo zakazi va postavshik buyurtmalarini ko'rish
   | 'purchase.write' // buyurtma yaratish, nakladnoy kiritish, bekor qilish
   | 'purchase.approve' // postavshik kelishuvini tasdiqlash / rad etish
@@ -50,6 +51,10 @@ export type Action =
   | 'tsex.read' // tsex: kroydan prixod, ishlab chiqarish, ostatka
   | 'tsex.write' // kroydan kelganini qabul qilish / rad etish, tikilgan fakt
   | 'fg.read' // OTK (tayyor mahsulot), tayyor mahsulot skladi, spisaniya
+  | 'sales.read' // Sotuv bo'limi: ishlab chiqarishdan o'tkazmalar, hisob-kitob (qarz)
+  | 'sales.transfer' // tayyor mahsulot skladidan Sotuv bo'limiga o'tkazma yuborish / o'chirish
+  | 'sales.accept' // o'tkazmani qabul qilish / rad etish (Sotuv bo'limi)
+  | 'sales.pay' // Sotuv bo'limining ishlab chiqarishga to'lovlari
   | 'billz.read' // Billz'dan olingan qoldiq va sotuv, qo'lda yangilash
   | 'billz.manage' // Billz kaliti va sozlamalari
   | 'reports.read'; // hisobotlar (ABC tahlil...)
@@ -63,6 +68,7 @@ const MATRIX: Record<Action, Role[]> = {
   'orders.write': ['admin', 'innovatsiya'],
   'orders.confirm': ['admin', 'innovatsiya'],
   'orders.reopen': ['admin', 'rahbar'],
+  'orders.price': ['admin', 'rahbar', 'innovatsiya'],
   'purchase.read': ['admin', 'rahbar', 'taminot', 'innovatsiya', 'buxgalter', 'sklad'],
   'purchase.write': ['admin', 'taminot'],
   'purchase.approve': ['admin', 'rahbar', 'taminot'],
@@ -74,6 +80,10 @@ const MATRIX: Record<Action, Role[]> = {
   'tsex.read': ['admin', 'rahbar', 'tsex', 'bichuv', 'otk', 'sklad', 'innovatsiya', 'buxgalter'],
   'tsex.write': ['admin', 'tsex'],
   'fg.read': ['admin', 'rahbar', 'otk', 'sklad', 'sotuv', 'tsex', 'bichuv', 'innovatsiya', 'buxgalter'],
+  'sales.read': ['admin', 'rahbar', 'sotuv', 'sklad', 'buxgalter', 'kassir', 'innovatsiya'],
+  'sales.transfer': ['admin', 'sklad'],
+  'sales.accept': ['admin', 'sotuv'],
+  'sales.pay': ['admin', 'buxgalter', 'kassir'],
   'billz.read': ['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk'],
   'billz.manage': ['admin'],
   'reports.read': ['admin', 'rahbar', 'buxgalter', 'sotuv'],

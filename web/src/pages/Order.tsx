@@ -245,6 +245,52 @@ function WorksCard({ d, editable, onSaved }: { d: OrderDetail; editable: boolean
   );
 }
 
+// ---------- Sotuv bo'limiga narx (ichki narx) ----------
+function SalePriceCard({ d, editable, onSaved }: { d: OrderDetail; editable: boolean; onSaved: Save }) {
+  const init = () => ({ p1: plain(d.order.sale_price1), p2: plain(d.order.sale_price2) });
+  const [v, setV] = useState(init);
+  useEffect(() => setV(init()), [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = v.p1 !== init().p1 || v.p2 !== init().p2;
+  const parse = (s: string) => (s.trim() === '' ? null : num(s));
+  const bad = [v.p1, v.p2].some((s) => s.trim() !== '' && !(num(s) >= 0));
+  const m = useMutation({
+    mutationFn: () => api<OrderDetail>(`/orders/${d.order.id}/sale-price`, { method: 'PUT', body: { sale_price1: parse(v.p1), sale_price2: parse(v.p2) } }),
+    onSuccess: (r) => onSaved(r, 'Sotuv bo\'limiga narx saqlandi'),
+  });
+  const unit = d.totals.qty > 0 ? (Number(d.totals.material_uzs) + Number(d.totals.work_uzs)) / d.totals.qty : null;
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+        <h2>Sotuv bo'limiga narx (1 dona)</h2>
+        {editable && (
+          <button className="btn sm" disabled={!dirty || bad || m.isPending} onClick={() => m.mutate()}>
+            Saqlash
+          </button>
+        )}
+      </div>
+      <ErrorText error={m.error} />
+      <div className="row" style={{ gap: 18 }}>
+        {(
+          [
+            ['p1', '1 sort'],
+            ['p2', '2 sort'],
+          ] as const
+        ).map(([k, label]) => (
+          <label key={k} className="row">
+            <span>{label}</span>
+            {editable ? <input className="num" inputMode="decimal" aria-label={`${label} narxi`} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} /> : <b className="mono">{money(v[k] || null)}</b>}
+            <span className="note">so'm</span>
+          </label>
+        ))}
+      </div>
+      <p className="note" style={{ marginTop: 8 }}>
+        Ishlab chiqarish tayyor mahsulotni Sotuv bo'limiga shu narxda o'tkazadi. Narx belgilanmaguncha o'tkazma yuborilmaydi; o'zgartirilsa avval yuborilganlarga ta'sir qilmaydi.
+        {unit != null && v.p1 && num(v.p1) >= 0 && ` Rejadagi tannarx ${money(unit)} → 1 sort ustamasi ${money(num(v.p1) - unit)} so'm.`}
+      </p>
+    </div>
+  );
+}
+
 // ---------- Hisob: rang bo'yicha tannarx va kerakli xomashyo ----------
 function SummaryCard({ d }: { d: OrderDetail }) {
   const material = Number(d.totals.material_uzs);
@@ -478,6 +524,7 @@ export function OrderPage() {
       <MaterialsSheet d={d} editable={editable} onSaved={onSaved} />
       <WorksCard d={d} editable={editable} onSaved={onSaved} />
       <SummaryCard d={d} />
+      <SalePriceCard d={d} editable={o.status !== 'cancelled' && can.ordersPrice(me.role)} onSaved={onSaved} />
 
       {copyFrom && (
         <CopyFromOrderModal
