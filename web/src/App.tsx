@@ -24,6 +24,7 @@ import { AbcPage } from './pages/Reports';
 import { SalesLedgerPage, SalesPrixodPage, TransferPage } from './pages/Sales';
 import { HrEmployeePage, HrEmployeesPage } from './pages/Hr';
 import { CashAvansPage, CashInputPage, CashJournalPage, CashReportPage, CashSettingsPage } from './pages/Cash';
+import { ImportPage } from './pages/Import';
 import { HrMoneyPage, HrPayrollPage, HrTabelInputPage, HrTabelPage, HrWorkPage, HrWorkTypesPage } from './pages/HrWork';
 
 interface NavItem {
@@ -145,6 +146,7 @@ const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
           { to: '/users', label: 'Foydalanuvchilar', show: (r) => can.users(r) },
           { to: '/audit', label: 'Audit log', show: (r) => can.audit(r) },
           { to: '/billz/sozlamalar', label: 'Billz sozlamalari', show: (r) => can.billzManage(r) },
+          { to: '/import', label: "Sheets'dan import", show: (r) => can.importRun(r) },
         ],
       ],
     ],
@@ -305,6 +307,7 @@ export function App() {
         <Route path="/catalog" element={<CatalogPage />} />
         {can.users(me.role) && <Route path="/users" element={<UsersPage />} />}
         {can.audit(me.role) && <Route path="/audit" element={<AuditPage />} />}
+        {can.importRun(me.role) && <Route path="/import" element={<ImportPage />} />}
         <Route path="/password" element={<ChangePasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

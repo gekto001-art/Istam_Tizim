@@ -63,6 +63,7 @@ export type Action =
   | 'cash.read' // kassa: jurnal, qoldiqlar, hisobot, avans-hisobot
   | 'cash.write' // kassa yozuvlari (kirim, chiqim, transfer, ayriboshlash)
   | 'cash.manage' // hamyonlar va xarajat elementlari
+  | 'import.run' // Google Sheets'dan import (xodimlar, oyliklar, ish turlari, kassa)
   | 'billz.read' // Billz'dan olingan qoldiq va sotuv, qo'lda yangilash
   | 'billz.manage' // Billz kaliti va sozlamalari
   | 'reports.read'; // hisobotlar (ABC tahlil...)
@@ -100,6 +101,7 @@ const MATRIX: Record<Action, Role[]> = {
   'cash.read': ['admin', 'rahbar', 'buxgalter', 'kassir'],
   'cash.write': ['admin', 'buxgalter', 'kassir'],
   'cash.manage': ['admin', 'buxgalter'],
+  'import.run': ['admin'],
   'billz.read': ['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk'],
   'billz.manage': ['admin'],
   'reports.read': ['admin', 'rahbar', 'buxgalter', 'sotuv'],

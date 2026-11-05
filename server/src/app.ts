@@ -21,6 +21,7 @@ import { reportsRouter } from './routes/reports.js';
 import { salesRouter } from './routes/sales.js';
 import { hrRouter } from './routes/hr.js';
 import { cashRouter } from './routes/cash.js';
+import { importRouter } from './routes/import.js';
 import { usersRouter } from './routes/users.js';
 
 export function createApp() {
@@ -29,6 +30,8 @@ export function createApp() {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin, credentials: true }));
+  // Sheets'dan import — katta matn (o'n minglab qator); qolgan hamma joyda 1 MB
+  app.use('/api/import', express.json({ limit: '25mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use(pinoHttp({ level: config.logLevel, redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'] }));
@@ -53,6 +56,7 @@ export function createApp() {
   api.use('/sales', requireAuth, salesRouter);
   api.use('/hr', requireAuth, hrRouter);
   api.use('/cash', requireAuth, cashRouter);
+  api.use('/import', requireAuth, importRouter);
   api.use('/', requireAuth, catalogRouter); // /colors, /sizes, /materials ...
   app.use('/api', api);
 

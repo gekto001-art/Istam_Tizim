@@ -75,6 +75,7 @@ export const can = {
   cashRead: has(['admin', 'rahbar', 'buxgalter', 'kassir']),
   cashWrite: has(['admin', 'buxgalter', 'kassir']),
   cashManage: has(['admin', 'buxgalter']),
+  importRun: has(['admin']),
   billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
   billzManage: has(['admin']),
   reportsRead: has(['admin', 'rahbar', 'buxgalter', 'sotuv']),
