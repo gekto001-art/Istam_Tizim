@@ -1,10 +1,11 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { ErrorText, Field, Modal, PageHead, fmtDate, fmtNum, useToast } from '../components/ui';
 import { can, type AdjKind, type Employee, type HrAdjustment, type HrPayment, type Payroll, type TimesheetMonth, type TimesheetRow, type WorkLog, type WorkPrice, type WorkType } from '../types';
+import { WalletSelect, useMeta } from './Cash';
 import { DeptSelect, monthStart, useEmployees, useHrInvalidate } from './Hr';
 import { money, num } from './purchaseUi';
 import { SubmitBar, today } from './stockUi';
@@ -834,11 +835,13 @@ export function HrMoneyPage() {
   const { me } = useAuth();
   const toast = useToast();
   const inv = useHrInvalidate();
+  const qc = useQueryClient();
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
   const [a, setA] = useState({ adj_date: today(), employee_id: '', kind: 'bonus' as AdjKind, amount: '', note: '' });
-  const [p, setP] = useState({ pay_date: today(), employee_id: '', method: 'naqd' as 'naqd' | 'bank', amount: '', note: '' });
+  const [p, setP] = useState({ pay_date: today(), employee_id: '', method: 'naqd' as 'naqd' | 'bank', amount: '', note: '', wallet_id: '' });
   const emps = useQuery({ queryKey: ['hr', 'employees', 'all'], queryFn: () => api<Employee[]>('/hr/employees?status=all') });
+  const cashMeta = useMeta(!!me && can.hrPay(me.role) && can.cashRead(me.role));
   const qs = `from=${from}&to=${to}`;
   const adj = useQuery({ queryKey: ['hr', 'adjustments', qs], queryFn: () => api<HrAdjustment[]>(`/hr/adjustments?${qs}`) });
   const pays = useQuery({ queryKey: ['hr', 'payments', qs], queryFn: () => api<HrPayment[]>(`/hr/payments?${qs}`) });
@@ -851,16 +854,21 @@ export function HrMoneyPage() {
     },
   });
   const addP = useMutation({
-    mutationFn: () => api('/hr/payments', { method: 'POST', body: { ...p, employee_id: Number(p.employee_id), amount: num(p.amount) } }),
+    mutationFn: () =>
+      api('/hr/payments', { method: 'POST', body: { ...p, employee_id: Number(p.employee_id), amount: num(p.amount), wallet_id: p.wallet_id ? Number(p.wallet_id) : null } }),
     onSuccess: () => {
       inv();
+      qc.invalidateQueries({ queryKey: ['cash'] });
       setP({ ...p, amount: '', note: '' });
-      toast('To\'lov saqlandi');
+      toast(p.wallet_id ? 'To\'lov saqlandi va kassaga chiqim yozildi' : 'To\'lov saqlandi');
     },
   });
   const del = useMutation({
     mutationFn: (path: string) => api(path, { method: 'DELETE' }),
-    onSuccess: () => inv(),
+    onSuccess: () => {
+      inv();
+      qc.invalidateQueries({ queryKey: ['cash'] }); // to'lov bilan kassadagi chiqim ham o'chadi
+    },
     onError: (e) => toast(e instanceof Error ? e.message : String(e)),
   });
   if (!me) return null;
@@ -920,6 +928,11 @@ export function HrMoneyPage() {
                 <Field label="Summa, so'm">
                   <input className="num" inputMode="decimal" value={p.amount} onChange={(e) => setP({ ...p, amount: e.target.value })} />
                 </Field>
+                {cashMeta.data && (
+                  <Field label="Qaysi hamyondan (kassaga chiqim)">
+                    <WalletSelect meta={cashMeta.data} value={p.wallet_id} onChange={(v) => setP({ ...p, wallet_id: v })} label="Hamyon" all="— kassaga yozilmasin —" noAvans />
+                  </Field>
+                )}
                 <Field label="Izoh">
                   <input value={p.note} onChange={(e) => setP({ ...p, note: e.target.value })} />
                 </Field>
@@ -994,6 +1007,7 @@ export function HrMoneyPage() {
                   <th>Xodim</th>
                   <th>Bo'lim</th>
                   <th>Usul</th>
+                  <th>Hamyon (kassa)</th>
                   <th className="n">Summa</th>
                   <th>Izoh</th>
                   <th>Kiritgan</th>
@@ -1007,6 +1021,7 @@ export function HrMoneyPage() {
                     <td>{x.full_name}</td>
                     <td>{x.department_name}</td>
                     <td>{METHOD[x.method]}</td>
+                    <td>{x.wallet_name ?? <span className="note">kassaga yozilmagan</span>}</td>
                     <td className="n">{money(x.amount)}</td>
                     <td>{x.note ?? ''}</td>
                     <td>{x.created_by_name ?? ''}</td>

@@ -14,15 +14,35 @@ const CUR_LABEL: Record<CashCurrency, string> = { UZS: "So'm", USD: 'Dollar', CN
 const BUSINESS: Record<CashWallet['business'], string> = { moliya: "Moliya bo'limi", tijorat: "Tijorat (Sotuv) bo'limi", ishlab: 'Ishlab chiqarish' };
 const KIND: Record<CashWallet['kind'], string> = { naqd: 'Naqd kassa', karta: 'Karta', bank: 'Bank hisob', avans: 'Avans-hisobot', boshqa: 'Boshqa' };
 
-const useMeta = () => useQuery({ queryKey: ['cash', 'meta'], queryFn: () => api<CashMeta>('/cash/meta') });
+export const useMeta = (enabled = true) => useQuery({ queryKey: ['cash', 'meta'], queryFn: () => api<CashMeta>('/cash/meta'), enabled });
 const useCashInvalidate = () => {
   const qc = useQueryClient();
   return () => qc.invalidateQueries({ queryKey: ['cash'] });
 };
 const amt = (v: string) => (Number(v) ? money(v) : '');
+const SOURCE: Record<string, string> = { hr_payment: 'HR to\'lovi', sales_payment: 'Sotuv to\'lovi' };
 
-function WalletSelect({ meta, value, onChange, label, all, exclude }: { meta: CashMeta | undefined; value: string; onChange: (v: string) => void; label: string; all?: string; exclude?: string }) {
-  const groups = (['moliya', 'tijorat', 'ishlab'] as const).map((b) => [b, (meta?.wallets ?? []).filter((w) => w.business === b && (w.is_active || String(w.id) === value) && String(w.id) !== exclude)] as const);
+/** Hamyon tanlash (bo'lim bo'yicha guruhlangan); noAvans — avans-hisobot hamyoni ko'rinmaydi (HR / Sotuv to'lovlari uchun) */
+export function WalletSelect({
+  meta,
+  value,
+  onChange,
+  label,
+  all,
+  exclude,
+  noAvans,
+}: {
+  meta: CashMeta | undefined;
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+  all?: string;
+  exclude?: string;
+  noAvans?: boolean;
+}) {
+  const groups = (['moliya', 'tijorat', 'ishlab'] as const).map(
+    (b) => [b, (meta?.wallets ?? []).filter((w) => w.business === b && (w.is_active || String(w.id) === value) && String(w.id) !== exclude && !(noAvans && w.kind === 'avans'))] as const,
+  );
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
       <option value="">{all ?? '— hamyon —'}</option>
@@ -418,6 +438,11 @@ function EntriesTable({ rows, canDelete, onDelete, pending, showDate }: { rows: 
               <td>
                 {e.op_name}
                 {e.pair_wallet && <span className="note"> {Number(e.amount_out) ? '→' : '←'} {e.pair_wallet}</span>}
+                {e.source && (
+                  <span className="pill muted" style={{ marginLeft: 6 }} title="Manba sahifasida o'zgartiriladi / o'chiriladi">
+                    {SOURCE[e.source]}
+                  </span>
+                )}
               </td>
               <td>{e.center_name ?? ''}</td>
               <td>{e.item_name ? `${e.item_code} ${e.item_name}` : ''}</td>
@@ -434,9 +459,11 @@ function EntriesTable({ rows, canDelete, onDelete, pending, showDate }: { rows: 
               <td>{e.created_by_name ?? ''}</td>
               {canDelete && (
                 <td>
-                  <button className="x" aria-label="O'chirish" disabled={pending} onClick={() => confirm(e.pair_id ? 'Yozuv juftligi (chiqim + kirim) bilan o\'chirilsinmi?' : 'Yozuv o\'chirilsinmi?') && onDelete(e.id)}>
-                    ✕
-                  </button>
+                  {!e.source && (
+                    <button className="x" aria-label="O'chirish" disabled={pending} onClick={() => confirm(e.pair_id ? 'Yozuv juftligi (chiqim + kirim) bilan o\'chirilsinmi?' : 'Yozuv o\'chirilsinmi?') && onDelete(e.id)}>
+                      ✕
+                    </button>
+                  )}
                 </td>
               )}
             </tr>

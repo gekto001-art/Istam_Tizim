@@ -5,6 +5,7 @@ import { pool, tx } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { idParam, optText } from '../lib/util.js';
+import { deleteCashBySource, postSalesPayment } from '../services/cash.js';
 
 /**
  * Sotuv bo'limi — alohida biznes. 1-qism: ishlab chiqarishdan prixod va hisob-kitob.
@@ -167,14 +168,27 @@ salesRouter.get('/payments', async (req, res) => {
 salesRouter.post('/payments', requireAction('sales.pay'), async (req, res) => {
   const ctx = ctxOf(req);
   const b = z
-    .object({ pay_date: date, amount_uzs: z.coerce.number().finite().positive().max(1e13), method: METHOD, note: optText(500) })
+    .object({
+      pay_date: date,
+      amount_uzs: z.coerce.number().finite().positive().max(1e13),
+      method: METHOD,
+      note: optText(500),
+      // ikkalasi tanlansa — kassada ichki transfer: Sotuv hamyoni → ishlab chiqarish hamyoni
+      from_wallet_id: idParam.nullish(),
+      to_wallet_id: idParam.nullish(),
+    })
     .parse(req.body);
+  if (!b.from_wallet_id !== !b.to_wallet_id) throw badRequest('Kassaga yozish uchun ikkala hamyonni tanlang (qaysidan va qaysiga)');
   const row = await tx(async (db) => {
     const p = (
-      await db.query('INSERT INTO sales_payments (pay_date, amount_uzs, method, note, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING *', [
-        b.pay_date, b.amount_uzs, b.method, b.note, ctx.userId,
-      ])
+      await db.query(
+        'INSERT INTO sales_payments (pay_date, amount_uzs, method, note, from_wallet_id, to_wallet_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [b.pay_date, b.amount_uzs, b.method, b.note, b.from_wallet_id ?? null, b.to_wallet_id ?? null, ctx.userId],
+      )
     ).rows[0];
+    if (b.from_wallet_id && b.to_wallet_id) {
+      await postSalesPayment(db, { id: p.id, pay_date: p.pay_date, from_wallet_id: b.from_wallet_id, to_wallet_id: b.to_wallet_id, amount: p.amount_uzs, note: b.note }, ctx.userId);
+    }
     await audit(db, ctx, 'sales_payment', p.id, 'create', undefined, p);
     return p;
   });
@@ -187,6 +201,7 @@ salesRouter.delete('/payments/:id', requireAction('sales.pay'), async (req, res)
   await tx(async (db) => {
     const p = (await db.query('DELETE FROM sales_payments WHERE id = $1 RETURNING *', [id])).rows[0];
     if (!p) throw notFound('To\'lov');
+    await deleteCashBySource(db, 'sales_payment', id); // kassadagi transfer ham o'chadi
     await audit(db, ctx, 'sales_payment', id, 'delete', p, undefined);
   });
   res.status(204).end();

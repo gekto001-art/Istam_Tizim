@@ -5,6 +5,7 @@ import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { idParam, optText } from '../lib/util.js';
+import { deleteCashBySource, postHrPayment } from '../services/cash.js';
 
 /**
  * HR — Sheets "HR Istam Ishlab chiqarish Ko'ylak / Shim" va "HR Istam yangi" (tabel) o'rniga.
@@ -558,8 +559,9 @@ hrRouter.get('/payments', requireAction('hr.read'), async (req, res) => {
   res.json(
     (
       await pool.query(
-        `SELECT p.*, e.full_name, d.name AS department_name, u.full_name AS created_by_name
+        `SELECT p.*, e.full_name, d.name AS department_name, u.full_name AS created_by_name, w.name AS wallet_name
            FROM hr_payments p JOIN employees e ON e.id = p.employee_id JOIN hr_departments d ON d.id = e.department_id LEFT JOIN users u ON u.id = p.created_by
+           LEFT JOIN cash_wallets w ON w.id = p.wallet_id
           WHERE ($1::date IS NULL OR p.pay_date >= $1) AND ($2::date IS NULL OR p.pay_date <= $2) AND ($3::int IS NULL OR p.employee_id = $3)
           ORDER BY p.pay_date DESC, p.id DESC`,
         [q.from ?? null, q.to ?? null, q.employee_id ?? null],
@@ -571,15 +573,26 @@ hrRouter.get('/payments', requireAction('hr.read'), async (req, res) => {
 hrRouter.post('/payments', requireAction('hr.pay'), async (req, res) => {
   const ctx = ctxOf(req);
   const b = z
-    .object({ pay_date: date, employee_id: idParam, method: z.enum(['naqd', 'bank']), amount: money.refine((v) => v > 0, 'Summa 0 dan katta'), note: optText(300) })
+    .object({
+      pay_date: date,
+      employee_id: idParam,
+      method: z.enum(['naqd', 'bank']),
+      amount: money.refine((v) => v > 0, 'Summa 0 dan katta'),
+      note: optText(300),
+      wallet_id: idParam.nullish(), // tanlansa — kassada chiqim ham yoziladi
+    })
     .parse(req.body);
   const row = await tx(async (db) => {
-    await employeeOf(db, b.employee_id);
+    const e = await employeeOf(db, b.employee_id);
     const p = (
-      await db.query('INSERT INTO hr_payments (pay_date, employee_id, method, amount, note, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [
-        b.pay_date, b.employee_id, b.method, b.amount, b.note, ctx.userId,
+      await db.query('INSERT INTO hr_payments (pay_date, employee_id, method, amount, note, wallet_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *', [
+        b.pay_date, b.employee_id, b.method, b.amount, b.note, b.wallet_id ?? null, ctx.userId,
       ])
     ).rows[0];
+    if (b.wallet_id) {
+      const production = !!(await db.query('SELECT producer_id FROM hr_departments WHERE id = $1', [e.department_id])).rows[0]?.producer_id;
+      await postHrPayment(db, { ...p, wallet_id: b.wallet_id, employee: e.full_name, production }, ctx.userId);
+    }
     await audit(db, ctx, 'hr_payment', p.id, 'create', undefined, p);
     return p;
   });
@@ -592,6 +605,7 @@ hrRouter.delete('/payments/:id', requireAction('hr.pay'), async (req, res) => {
   await tx(async (db) => {
     const p = (await db.query('DELETE FROM hr_payments WHERE id = $1 RETURNING *', [id])).rows[0];
     if (!p) throw notFound('To\'lov');
+    await deleteCashBySource(db, 'hr_payment', id); // kassadagi chiqim ham o'chadi
     await audit(db, ctx, 'hr_payment', id, 'delete', p, undefined);
   });
   res.status(204).end();

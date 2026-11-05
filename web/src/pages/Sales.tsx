@@ -1,9 +1,10 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { ErrorText, PageHead, fmtDate, fmtNum, useToast } from '../components/ui';
 import { can, type FgStock, type PayMethod, type SalesLedger, type SalesPayment, type SalesTransfer, type TransferStatus } from '../types';
+import { WalletSelect, useMeta } from './Cash';
 import { money, num } from './purchaseUi';
 import { SubmitBar, today, useStockInvalidate } from './stockUi';
 
@@ -385,22 +386,37 @@ export function SalesLedgerPage() {
   const inv = useStockInvalidate();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [pay, setPay] = useState({ pay_date: today(), amount: '', method: 'naqd' as PayMethod, note: '' });
+  const [pay, setPay] = useState({ pay_date: today(), amount: '', method: 'naqd' as PayMethod, note: '', from_wallet_id: '', to_wallet_id: '' });
   const [msg, setMsg] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const cashMeta = useMeta(!!me && can.salesPay(me.role) && can.cashRead(me.role));
   const qs = [from && `from=${from}`, to && `to=${to}`].filter(Boolean).join('&');
   const q = useQuery({ queryKey: ['stock', 'sales', 'ledger', qs], queryFn: () => api<SalesLedger>(`/sales/ledger${qs ? `?${qs}` : ''}`) });
   const add = useMutation({
-    mutationFn: () => api<SalesPayment>('/sales/payments', { method: 'POST', body: { pay_date: pay.pay_date, amount_uzs: num(pay.amount), method: pay.method, note: pay.note } }),
+    mutationFn: () =>
+      api<SalesPayment>('/sales/payments', {
+        method: 'POST',
+        body: {
+          pay_date: pay.pay_date,
+          amount_uzs: num(pay.amount),
+          method: pay.method,
+          note: pay.note,
+          from_wallet_id: pay.from_wallet_id ? Number(pay.from_wallet_id) : null,
+          to_wallet_id: pay.to_wallet_id ? Number(pay.to_wallet_id) : null,
+        },
+      }),
     onSuccess: (r) => {
       inv();
+      qc.invalidateQueries({ queryKey: ['cash'] });
       setPay({ ...pay, amount: '', note: '' });
-      toast(`To'lov ${money(r.amount_uzs)} so'm kiritildi`);
+      toast(`To'lov ${money(r.amount_uzs)} so'm kiritildi${pay.from_wallet_id ? ' — kassada ichki transfer yozildi' : ''}`);
     },
   });
   const del = useMutation({
     mutationFn: (id: number) => api(`/sales/payments/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       inv();
+      qc.invalidateQueries({ queryKey: ['cash'] });
       toast('To\'lov o\'chirildi');
     },
     onError: (e) => toast(e instanceof Error ? e.message : String(e)),
@@ -412,6 +428,7 @@ export function SalesLedgerPage() {
     setMsg(null);
     if (!pay.pay_date) return setMsg('Sanani kiriting');
     if (!(num(pay.amount) > 0)) return setMsg('Summani kiriting');
+    if (!pay.from_wallet_id !== !pay.to_wallet_id) return setMsg('Kassaga yozish uchun ikkala hamyonni tanlang (yoki ikkalasini bo\'sh qoldiring)');
     add.mutate();
   };
   return (
@@ -473,8 +490,22 @@ export function SalesLedgerPage() {
               Izoh
               <input value={pay.note} maxLength={500} onChange={(e) => setPay({ ...pay, note: e.target.value })} />
             </label>
+            {cashMeta.data && (
+              <>
+                <label className="f">
+                  Sotuv hamyonidan (kassa)
+                  <WalletSelect meta={cashMeta.data} value={pay.from_wallet_id} onChange={(v) => setPay({ ...pay, from_wallet_id: v })} label="Qaysi hamyondan" all="— kassaga yozilmasin —" noAvans exclude={pay.to_wallet_id} />
+                </label>
+                <label className="f">
+                  Ishlab chiqarish hamyoniga
+                  <WalletSelect meta={cashMeta.data} value={pay.to_wallet_id} onChange={(v) => setPay({ ...pay, to_wallet_id: v })} label="Qaysi hamyonga" all="— kassaga yozilmasin —" noAvans exclude={pay.from_wallet_id} />
+                </label>
+              </>
+            )}
           </div>
-          <SubmitBar msg={msg} error={add.error} pending={add.isPending} onSubmit={submit} />
+          <SubmitBar msg={msg} error={add.error} pending={add.isPending} onSubmit={submit}>
+            Ikkala hamyon tanlansa — kassada ichki transfer avtomatik yoziladi.
+          </SubmitBar>
         </div>
       )}
 

@@ -834,7 +834,7 @@ export interface WorkLog {
 }
 export type AdjKind = 'bonus' | 'penalty' | 'other';
 export interface HrAdjustment { id: number; adj_date: string; employee_id: number; full_name: string; department_name: string; kind: AdjKind; amount: string; note: string | null; created_by_name: string | null }
-export interface HrPayment { id: number; pay_date: string; employee_id: number; full_name: string; department_name: string; method: 'naqd' | 'bank'; amount: string; note: string | null; created_by_name: string | null }
+export interface HrPayment { id: number; pay_date: string; employee_id: number; full_name: string; department_name: string; method: 'naqd' | 'bank'; amount: string; note: string | null; created_by_name: string | null; wallet_name: string | null }
 type Sums = { salary: string; piece: string; bonus: string; penalty: string; accrued: string; cash: string; bank: string };
 export interface PayrollRow extends Sums {
   employee_id: number;
@@ -899,6 +899,7 @@ export interface CashEntry {
   partiya_no: string | null;
   pair_id: number | null;
   pair_wallet: string | null;
+  source: 'hr_payment' | 'sales_payment' | null;
   created_by_name: string | null;
 }
 export interface CashBalance { wallet_id: number; wallet_name: string; kind: string; business: string; currency: CashCurrency; balance: string }

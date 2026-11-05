@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ctxOf, requireAction } from '../auth/context.js';
 import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { idParam, optText } from '../lib/util.js';
 
 /**
@@ -218,7 +218,7 @@ const ENTRIES = `
          e.counterparty, e.department, e.responsible, e.note, e.currency, e.rate, e.amount_in, e.amount_out,
          round((e.amount_in - e.amount_out) * e.rate, 2) AS net_uzs, to_char(e.period, 'YYYY-MM') AS period, e.order_id, od.partiya_no, e.pair_id,
          (SELECT pw.name || ' · ' || p.currency FROM cash_entries p JOIN cash_wallets pw ON pw.id = p.wallet_id WHERE p.pair_id = e.pair_id AND p.id <> e.id LIMIT 1) AS pair_wallet,
-         e.created_at, u.full_name AS created_by_name
+         e.source, e.source_id, e.created_at, u.full_name AS created_by_name
     FROM cash_entries e JOIN cash_wallets w ON w.id = e.wallet_id JOIN cash_op_types o ON o.id = e.op_type_id
     LEFT JOIN cash_centers c ON c.id = e.center_id LEFT JOIN cash_items i ON i.id = e.item_id LEFT JOIN orders od ON od.id = e.order_id
     LEFT JOIN users u ON u.id = e.created_by`;
@@ -256,6 +256,8 @@ cashRouter.delete('/entries/:id', requireAction('cash.write'), async (req, res) 
   const n = await tx(async (db) => {
     const e = (await db.query('SELECT * FROM cash_entries WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!e) throw notFound('Kassa yozuvi');
+    if (e.source === 'hr_payment') throw conflict('Bu yozuv HR to\'lovidan — HR «Bonus va to\'lovlar» sahifasida o\'chiring');
+    if (e.source === 'sales_payment') throw conflict('Bu yozuv Sotuv bo\'limi to\'lovidan — «Ishlab chiqarish bilan hisob» sahifasida o\'chiring');
     const rows = (await db.query('DELETE FROM cash_entries WHERE id = $1 OR (pair_id IS NOT NULL AND pair_id = $2) RETURNING *', [id, e.pair_id])).rows;
     await audit(db, ctx, 'cash_entry', id, 'delete', rows, undefined);
     return rows.length;
