@@ -679,7 +679,8 @@ hrRouter.get('/payroll', requireAction('hr.read'), async (req, res) => {
                 FROM hr_work_logs WHERE work_date BETWEEN $1 AND $2 GROUP BY employee_id)
        SELECT e.id AS employee_id, e.full_name, e.position, e.brigade, e.department_id, d.name AS department_name, e.fired_on,
               coalesce(ts.days, 0) AS days, coalesce(ts.absent_days, 0) AS absent_days, coalesce(ts.hours, 0) AS hours,
-              coalesce(st.piece_aktiv, 0) AS piece_aktiv, coalesce(st.piece_neytral, 0) AS piece_neytral, coalesce(st.piece_passiv, 0) AS piece_passiv,
+              coalesce(st.piece_aktiv, 0)::numeric(18,2) AS piece_aktiv, coalesce(st.piece_neytral, 0)::numeric(18,2) AS piece_neytral,
+              coalesce(st.piece_passiv, 0)::numeric(18,2) AS piece_passiv,
               coalesce(per.opening, 0) AS opening, coalesce(per.salary, 0) AS salary, coalesce(per.piece, 0) AS piece,
               coalesce(per.bonus, 0) AS bonus, coalesce(per.other, 0) AS other, coalesce(per.penalty, 0) AS penalty,
               coalesce(per.salary + per.piece + per.bonus + per.other - per.penalty, 0) AS accrued,

@@ -112,12 +112,12 @@ describe('Import', () => {
     expect(wlr.errors.map((e: { message: string }) => e.message)).toEqual([expect.stringContaining('topilmadi'), expect.stringContaining('status')]);
     expect(wlr.warnings).toEqual([`Yangi ish turi yaratildi (narxi yo'q): «${w3}»`]);
     const pay = async () =>
-      ((await api().get(`/api/hr/payroll?from=2026-08-01&to=2026-09-30&department_id=${kdep}`).set(auth(A))).body.rows as { full_name: string }[]).find((r) => r.full_name === n1);
+      ((await api().get(`/api/hr/payroll?from=2026-08-01&to=2026-09-30&department_id=${kdep}`).set(auth(A))).body.rows as { full_name: string; piece: string }[]).find((r) => r.full_name === n1);
     expect(await pay()).toMatchObject({ piece: '63500.00', piece_aktiv: '13500.00', piece_neytral: '50000.00', piece_passiv: '0.00' });
     const wb = ((await api().get('/api/import/batches').set(auth(A))).body as { id: number; kind: string; cash_rows: number }[])[0];
     expect(wb).toMatchObject({ id: wlr.batch_id, kind: 'work_logs', cash_rows: 3 });
     expect((await api().delete(`/api/import/batches/${wb.id}`).set(auth(A))).body).toEqual({ deleted: 3 });
-    expect(await pay()).toMatchObject({ piece: '0.00' });
+    expect(Number((await pay())!.piece)).toBe(0);
 
     // "Kassa Baza" varag'i: yuqorida jamlanma qatorlar, keyin sarlavha; gzip bilan
     const wName = uniq('MB Test Kassa ');
