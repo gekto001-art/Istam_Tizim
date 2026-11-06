@@ -18,7 +18,7 @@ import { idParam } from '../lib/util.js';
 export const importRouter = Router();
 importRouter.use(requireAction('import.run'));
 
-type Kind = 'employees' | 'salaries' | 'work_types' | 'cash';
+type Kind = 'employees' | 'salaries' | 'work_types' | 'cash' | 'work_logs';
 type Result = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[]; warnings: string[] };
 type Ctx = { db: Db; ctx: RequestCtx; batchId: number; opts: Opts; res: Result };
 type Opts = { department_id?: number | null; business?: 'moliya' | 'tijorat' | 'ishlab' };
@@ -54,6 +54,18 @@ const FIELDS: Record<Kind, { fields: Record<string, string[]>; required: string[
     },
     required: ['name'],
   },
+  work_logs: {
+    fields: {
+      date: ['sana'],
+      name: ['xodimnomi', 'xodim', 'fio', 'fish'],
+      category: ['kategoriya', 'kategoriyalar'],
+      work: ['ishturi', 'ishnomi'],
+      qty: ['miqdori', 'soni', 'miqdor'],
+      status: ['status'],
+      dept: ['bolim', 'bolimi'],
+    },
+    required: ['date', 'name', 'work', 'qty'],
+  },
   cash: {
     fields: {
       date: ['sana'],
@@ -79,7 +91,7 @@ const FIELDS: Record<Kind, { fields: Record<string, string[]>; required: string[
   },
 };
 
-const LABEL: Record<Kind, string> = { employees: 'Xodimlar', salaries: 'Oyliklar', work_types: 'Ish turlari va narxlar', cash: 'Kassa' };
+const LABEL: Record<Kind, string> = { employees: 'Xodimlar', salaries: 'Oyliklar', work_types: 'Ish turlari va narxlar', cash: 'Kassa', work_logs: 'Ish nazorati (ishbay)' };
 
 class DryRun extends Error {}
 
@@ -205,6 +217,51 @@ async function workTypeRow(c: Ctx, v: Cells) {
   if (!isNew) c.res.updated++;
 }
 
+// ---------- Ish nazorati (Ish nazorati baza): xodim × ish turi × soni, status ----------
+/** Bo'lim: tanlangani yoki «Bo'lim» ustunidagi tsex nomi (1-ISTAM KO'YLAK) orqali */
+async function workDepartment(c: Ctx, name: string) {
+  if (c.opts.department_id) return c.opts.department_id;
+  const n = normHeader(name);
+  if (!n) return null;
+  const d = (
+    await c.db.query(
+      `SELECT d.id FROM hr_departments d LEFT JOIN producers p ON p.id = d.producer_id
+        WHERE regexp_replace(lower(p.name), '[^a-z0-9а-я]', '', 'g') = $1 OR regexp_replace(lower(d.name), '[^a-z0-9а-я]', '', 'g') = $1 LIMIT 1`,
+      [n],
+    )
+  ).rows[0];
+  return (d?.id as number | undefined) ?? null;
+}
+
+async function workLogRow(c: Ctx, v: Cells) {
+  const date = parseDate(v('date'));
+  if (!date) throw new Error('sana yo\'q yoki noto\'g\'ri');
+  const dept = await workDepartment(c, v('dept'));
+  if (!dept) throw new Error('bo\'lim topilmadi — «Bo\'lim»ni tanlang');
+  const name = v('name').trim();
+  if (!name) throw new Error('xodim yo\'q');
+  const e = (await findEmployee(c.db, name, dept)) ?? (await findEmployee(c.db, name));
+  if (!e) throw new Error(`«${name}» xodimi topilmadi — avval xodimlarni import qiling`);
+  const work = v('work').replace(/\s+/g, ' ').trim();
+  if (!work) throw new Error('ish turi yo\'q');
+  const qty = parseNumber(v('qty'));
+  if (qty == null || !Number.isInteger(qty) || qty <= 0) throw new Error('soni noto\'g\'ri');
+  const s = normHeader(v('status'));
+  const status = !s || s.startsWith('akt') ? 'aktiv' : s.startsWith('ney') ? 'neytral' : s.startsWith('pas') ? 'passiv' : null;
+  if (!status) throw new Error(`status noto'g'ri: «${v('status').trim()}» (Aktiv / Neytral / Passiv)`);
+  let w = (await c.db.query('SELECT id FROM hr_work_types WHERE department_id = $1 AND lower(name) = lower($2)', [dept, work])).rows[0];
+  if (!w) {
+    w = (await c.db.query('INSERT INTO hr_work_types (department_id, category, name) VALUES ($1, $2, $3) RETURNING id', [dept, v('category').trim() || 'Boshqa', work])).rows[0];
+    const msg = `Yangi ish turi yaratildi (narxi yo'q): «${work}»`;
+    if (!c.res.warnings.includes(msg) && c.res.warnings.length < 100) c.res.warnings.push(msg);
+  }
+  await c.db.query(
+    `INSERT INTO hr_work_logs (work_date, employee_id, work_type_id, qty, status, import_batch_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [date, e.id, w.id, qty, status, c.batchId, c.ctx.userId],
+  );
+  c.res.created++;
+}
+
 // ---------- Kassa (Kassa Baza / Kassa Ish/Ch / Kassa Tijorat ...) ----------
 type CashCache = { wallets: Map<string, number>; ops: Map<string, number>; centers: { id: number; name: string; code: string | null }[]; items: Map<string, number>; codes: Map<number, number>; orders: Map<string, number> };
 const CENTER_ALIAS: Record<string, string> = { ishlabchiqarish: 'IGSL-CCCOS01', tovarlartannarxi: 'IGSL-CCCOS01', boshqadaromadlar: 'IGSL-PCOTI01' };
@@ -311,7 +368,7 @@ async function cashRow(c: Ctx, v: Cells, cache: CashCache) {
 // ---------- Endpoint ----------
 importRouter.post('/:kind', async (req, res) => {
   const ctx = ctxOf(req);
-  const kind = z.enum(['employees', 'salaries', 'work_types', 'cash']).parse(req.params.kind);
+  const kind = z.enum(['employees', 'salaries', 'work_types', 'cash', 'work_logs']).parse(req.params.kind);
   const b = z
     .object({
       text: z.string().min(1).max(20_000_000).optional(),
@@ -343,7 +400,7 @@ importRouter.post('/:kind', async (req, res) => {
   let batchId = 0;
   try {
     await tx(async (db) => {
-      if (kind === 'work_types' && b.department_id && !(await db.query('SELECT 1 FROM hr_departments WHERE id = $1', [b.department_id])).rowCount) throw notFound('Bo\'lim');
+      if ((kind === 'work_types' || kind === 'work_logs') && b.department_id && !(await db.query('SELECT 1 FROM hr_departments WHERE id = $1', [b.department_id])).rowCount) throw notFound('Bo\'lim');
       batchId = (await db.query('INSERT INTO import_batches (kind, label, rows_total, created_by) VALUES ($1, $2, $3, $4) RETURNING id', [kind, b.label || null, data.length, ctx.userId])).rows[0].id;
       const c: Ctx = { db, ctx, batchId, opts: { department_id: b.department_id, business: b.business }, res: res0 };
       const cache = kind === 'cash' ? await cashCache(db) : null;
@@ -354,6 +411,7 @@ importRouter.post('/:kind', async (req, res) => {
           if (kind === 'employees') await employeeRow(c, v);
           else if (kind === 'salaries') await salaryRow(c, v);
           else if (kind === 'work_types') await workTypeRow(c, v);
+          else if (kind === 'work_logs') await workLogRow(c, v);
           else await cashRow(c, v, cache!);
           await db.query('RELEASE SAVEPOINT r');
         } catch (e) {
@@ -383,22 +441,25 @@ importRouter.get('/batches', async (_req, res) => {
     (
       await pool.query(
         `SELECT b.*, u.full_name AS created_by_name,
-                (SELECT count(*)::int FROM cash_entries e WHERE e.import_batch_id = b.id) AS cash_rows
+                (SELECT count(*)::int FROM cash_entries e WHERE e.import_batch_id = b.id)
+                  + (SELECT count(*)::int FROM hr_work_logs l WHERE l.import_batch_id = b.id) AS cash_rows
            FROM import_batches b LEFT JOIN users u ON u.id = b.created_by ORDER BY b.id DESC LIMIT 100`,
       )
     ).rows.map((r) => ({ ...r, kind_label: LABEL[r.kind as Kind] })),
   );
 });
 
-/** Kassa importini bekor qilish — shu partiyadagi barcha kassa yozuvlari o'chadi */
+/** Kassa / ish nazorati importini bekor qilish — shu partiyadagi barcha yozuvlar o'chadi */
 importRouter.delete('/batches/:id', async (req, res) => {
   const ctx = ctxOf(req);
   const id = idParam.parse(req.params.id);
   const n = await tx(async (db) => {
     const bt = (await db.query('SELECT * FROM import_batches WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!bt) throw notFound('Import');
-    if (bt.kind !== 'cash') throw badRequest('Faqat kassa importi bekor qilinadi (xodim, oylik, ish turlari — o\'z sahifasida tahrirlanadi)');
-    const del = (await db.query('DELETE FROM cash_entries WHERE import_batch_id = $1', [id])).rowCount ?? 0;
+    if (bt.kind !== 'cash' && bt.kind !== 'work_logs') {
+      throw badRequest('Faqat kassa va ish nazorati importi bekor qilinadi (xodim, oylik, ish turlari — o\'z sahifasida tahrirlanadi)');
+    }
+    const del = (await db.query(bt.kind === 'cash' ? 'DELETE FROM cash_entries WHERE import_batch_id = $1' : 'DELETE FROM hr_work_logs WHERE import_batch_id = $1', [id])).rowCount ?? 0;
     await db.query('DELETE FROM import_batches WHERE id = $1', [id]);
     await audit(db, ctx, 'import', id, 'undo', bt, { deleted: del });
     return del;

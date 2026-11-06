@@ -450,10 +450,12 @@ hrRouter.post('/work-types/:id/prices', requireAction('hr.rates'), async (req, r
 });
 
 // ---------- Ish nazorati (ishbay) ----------
+/** Xodimning faolligi: ish haqiga ta'sir qilmaydi, bonusda hisobga olinadi */
+export const WORK_STATUS = ['aktiv', 'neytral', 'passiv'] as const;
 const LOGS = `
   SELECT l.id, l.work_date, l.employee_id, e.full_name, e.department_id, d.name AS department_name, l.work_type_id, w.category, w.name AS work_name,
          l.qty, hr_price_at(l.work_type_id, l.work_date) AS price, round(l.qty * hr_price_at(l.work_type_id, l.work_date), 2) AS amount,
-         l.order_id, o.partiya_no, l.note, l.created_at, u.full_name AS created_by_name
+         l.status, l.order_id, o.partiya_no, l.note, l.created_at, u.full_name AS created_by_name
     FROM hr_work_logs l JOIN employees e ON e.id = l.employee_id JOIN hr_departments d ON d.id = e.department_id
     JOIN hr_work_types w ON w.id = l.work_type_id LEFT JOIN orders o ON o.id = l.order_id LEFT JOIN users u ON u.id = l.created_by`;
 
@@ -478,7 +480,16 @@ hrRouter.post('/work-logs', requireAction('hr.work'), async (req, res) => {
     .object({
       work_date: date,
       rows: z
-        .array(z.object({ employee_id: idParam, work_type_id: idParam, qty: z.coerce.number().int().min(1).max(1e7), order_id: idParam.nullish(), note: optText(300) }))
+        .array(
+          z.object({
+            employee_id: idParam,
+            work_type_id: idParam,
+            qty: z.coerce.number().int().min(1).max(1e7),
+            status: z.enum(WORK_STATUS).default('aktiv'),
+            order_id: idParam.nullish(),
+            note: optText(300),
+          }),
+        )
         .min(1)
         .max(1000),
     })
@@ -493,8 +504,8 @@ hrRouter.post('/work-logs', requireAction('hr.work'), async (req, res) => {
       if (!w.is_active) throw badRequest(`«${w.name}» ish turi o'chirilgan`);
       ids.push(
         (
-          await db.query('INSERT INTO hr_work_logs (work_date, employee_id, work_type_id, qty, order_id, note, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [
-            b.work_date, r.employee_id, r.work_type_id, r.qty, r.order_id ?? null, r.note, ctx.userId,
+          await db.query('INSERT INTO hr_work_logs (work_date, employee_id, work_type_id, qty, status, order_id, note, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [
+            b.work_date, r.employee_id, r.work_type_id, r.qty, r.status, r.order_id ?? null, r.note, ctx.userId,
           ])
         ).rows[0].id,
       );
@@ -658,23 +669,31 @@ hrRouter.get('/payroll', requireAction('hr.read'), async (req, res) => {
             ts AS (
               SELECT employee_id, count(*) FILTER (WHERE NOT absent AND hours > 0)::int AS days, count(*) FILTER (WHERE absent)::int AS absent_days,
                      coalesce(sum(hours), 0) AS hours
-                FROM hr_timesheet WHERE work_date BETWEEN $1 AND $2 GROUP BY employee_id)
+                FROM hr_timesheet WHERE work_date BETWEEN $1 AND $2 GROUP BY employee_id),
+            -- faollik (bonus uchun): ishbay summasi status bo'yicha
+            st AS (
+              SELECT employee_id,
+                     sum(round(qty * hr_price_at(work_type_id, work_date), 2)) FILTER (WHERE status = 'aktiv') AS piece_aktiv,
+                     sum(round(qty * hr_price_at(work_type_id, work_date), 2)) FILTER (WHERE status = 'neytral') AS piece_neytral,
+                     sum(round(qty * hr_price_at(work_type_id, work_date), 2)) FILTER (WHERE status = 'passiv') AS piece_passiv
+                FROM hr_work_logs WHERE work_date BETWEEN $1 AND $2 GROUP BY employee_id)
        SELECT e.id AS employee_id, e.full_name, e.position, e.brigade, e.department_id, d.name AS department_name, e.fired_on,
               coalesce(ts.days, 0) AS days, coalesce(ts.absent_days, 0) AS absent_days, coalesce(ts.hours, 0) AS hours,
+              coalesce(st.piece_aktiv, 0) AS piece_aktiv, coalesce(st.piece_neytral, 0) AS piece_neytral, coalesce(st.piece_passiv, 0) AS piece_passiv,
               coalesce(per.opening, 0) AS opening, coalesce(per.salary, 0) AS salary, coalesce(per.piece, 0) AS piece,
               coalesce(per.bonus, 0) AS bonus, coalesce(per.other, 0) AS other, coalesce(per.penalty, 0) AS penalty,
               coalesce(per.salary + per.piece + per.bonus + per.other - per.penalty, 0) AS accrued,
               coalesce(per.cash, 0) AS cash, coalesce(per.bank, 0) AS bank,
               coalesce(per.opening + per.salary + per.piece + per.bonus + per.other - per.penalty - per.cash - per.bank, 0) AS closing
          FROM employees e JOIN hr_departments d ON d.id = e.department_id
-         LEFT JOIN per ON per.employee_id = e.id LEFT JOIN ts ON ts.employee_id = e.id
+         LEFT JOIN per ON per.employee_id = e.id LEFT JOIN ts ON ts.employee_id = e.id LEFT JOIN st ON st.employee_id = e.id
         WHERE ($3::int IS NULL OR e.department_id = $3)
           AND (per.employee_id IS NOT NULL OR (e.hired_on <= $2 AND (e.fired_on IS NULL OR e.fired_on >= $1)))
         ORDER BY d.name, e.brigade NULLS LAST, lower(e.full_name)`,
       [q.from, q.to, q.department_id ?? null],
     )
   ).rows;
-  const keys = ['opening', 'salary', 'piece', 'bonus', 'other', 'penalty', 'accrued', 'cash', 'bank', 'closing'] as const;
+  const keys = ['opening', 'salary', 'piece', 'piece_aktiv', 'piece_neytral', 'piece_passiv', 'bonus', 'other', 'penalty', 'accrued', 'cash', 'bank', 'closing'] as const;
   const totals = Object.fromEntries(keys.map((k) => [k, r2(rows.reduce((a, r) => a + Number(r[k]), 0)).toFixed(2)]));
   res.json({ rows, totals });
 });

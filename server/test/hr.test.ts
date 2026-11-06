@@ -82,9 +82,12 @@ describe('HR', () => {
     const price = (id: number, body: object) => api().post(`/api/hr/work-types/${id}/prices`).set(auth(t.hr)).send(body);
     await price(yoqa.id, { valid_from: '2027-05-03', price: 200 });
     await price(manjet.id, { valid_from: '2027-05-05', price: 120 });
-    await log({ work_date: '2027-05-05', rows: [{ employee_id: tikuvchi.id, work_type_id: manjet.id, qty: 100 }] });
+    // status (faollik) — ish haqiga ta'sir qilmaydi, bonus uchun vedomostda ko'rinadi
+    expect((await log({ work_date: '2027-05-05', rows: [{ employee_id: tikuvchi.id, work_type_id: manjet.id, qty: 1, status: 'yaxshi' }] })).status).toBe(400);
+    await log({ work_date: '2027-05-05', rows: [{ employee_id: tikuvchi.id, work_type_id: manjet.id, qty: 100, status: 'passiv' }] });
     const logs = (await api().get(`/api/hr/work-logs?employee_id=${tikuvchi.id}`).set(auth(t.tsex))).body;
     expect(logs.map((l: { amount: string }) => l.amount)).toEqual(['12000.00', '10000.00', '30000.00']);
+    expect(logs.map((l: { status: string }) => l.status)).toEqual(['passiv', 'aktiv', 'aktiv']);
     // tsex maosh / vedomostni ko'rmaydi
     expect((await api().get(`/api/hr/employees/${usta.id}`).set(auth(t.tsex))).status).toBe(403);
     expect((await api().get('/api/hr/payroll?from=2027-05-01&to=2027-05-31').set(auth(t.tsex))).status).toBe(403);
@@ -102,7 +105,7 @@ describe('HR', () => {
     // vedomost (may): tikuvchi — ishbay 12 000 + 10 000 + 30 000 = 52 000, bonus 20 000, ushlab qolish 5 000 → 67 000; avans 40 000 → qoldiq 27 000
     const pr = (await api().get(`/api/hr/payroll?from=2027-05-01&to=2027-05-31&department_id=${dept}`).set(auth(t.buxgalter))).body;
     const tk = pr.rows.find((r: { employee_id: number }) => r.employee_id === tikuvchi.id);
-    expect(tk).toMatchObject({ days: 2, hours: '16.00', piece: '52000.00', salary: '0.00', bonus: '20000.00', penalty: '5000.00', accrued: '67000.00', cash: '40000.00', closing: '27000.00' });
+    expect(tk).toMatchObject({ days: 2, hours: '16.00', piece: '52000.00', piece_aktiv: '40000.00', piece_neytral: '0.00', piece_passiv: '12000.00', salary: '0.00', bonus: '20000.00', penalty: '5000.00', accrued: '67000.00', cash: '40000.00', closing: '27000.00' });
     // usta: 8 soat × 10 000 = 80 000 (kelmagan kun hisoblanmaydi)
     expect(pr.rows.find((r: { employee_id: number }) => r.employee_id === usta.id)).toMatchObject({ salary: '80000.00', days: 1, absent_days: 1, closing: '80000.00' });
     expect(pr.rows.find((r: { employee_id: number }) => r.employee_id === shimchi.id)).toBeUndefined();
