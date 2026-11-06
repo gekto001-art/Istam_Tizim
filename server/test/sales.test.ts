@@ -229,6 +229,9 @@ describe('Sotuv bo\'limi skladi: prixod, do\'kon, inventarizatsiya, postavshikla
     expect(cmp.rows.find((r: { id: number }) => r.id === own.id)).toMatchObject({ to_shops: 28, billz_sold: 4, expected: 24, billz_qty: 25, diff: 1 });
     expect(cmp.rows.find((r: { id: number }) => r.id === other.id)).toMatchObject({ to_shops: 12, expected: 12, billz_qty: 12, diff: 0 });
     expect(cmp.unmatched.map((u: { product_name: string }) => u.product_name)).toEqual(['Begona']);
+    // Billz jadvallarini tozalaymiz — Billz testi o'z do'konlarini kutadi
+    for (const tbl of ['billz_sales', 'billz_stock']) await pool.query(`DELETE FROM ${tbl} WHERE shop_id = $1`, [shopId]);
+    await pool.query('DELETE FROM billz_shops WHERE id = $1', [shopId]);
 
     expect((await api().get('/api/sales/sklad/stock').set(auth(t.hr))).status).toBe(403);
   });

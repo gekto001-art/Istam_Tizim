@@ -264,13 +264,6 @@ wholesaleRouter.post('/invoices', requireAction('sales.wholesale'), async (req, 
       if (!a) throw notFound('Agent');
       if (!a.is_active && b.agent_id) throw badRequest(`«${a.name}» agenti yopilgan`);
     }
-    if (b.kind === 'sale' && c.credit_limit != null) {
-      const amount = b.rows.reduce((s, r) => s + Math.round(r.qty * r.price * 100), 0);
-      const after = cents(c.debt) + amount;
-      if (after > cents(c.credit_limit)) {
-        throw badRequest(`«${c.name}»: nasiya chegarasi ${fromCents(cents(c.credit_limit))} so'm — hozirgi qarz ${fromCents(cents(c.debt))}, bu nakladnoy bilan ${fromCents(after)} bo'ladi`);
-      }
-    }
     const id = (
       await db.query(
         'INSERT INTO sales_invoices (kind, doc_date, client_id, agent_id, due_date, note, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
@@ -296,6 +289,14 @@ wholesaleRouter.post('/invoices', requireAction('sales.wholesale'), async (req, 
         `INSERT INTO sales_moves (move_date, kind, product_id, dir, qty, unit_cost, price, invoice_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [b.doc_date, b.kind, r.product_id, b.kind === 'sale' ? -1 : 1, r.qty, Number(p.avg_cost ?? 0), r.price, id, ctx.userId],
       );
+    }
+    // nasiya chegarasi — sklad tekshiruvidan keyin (xato bo'lsa tranzaksiya bekor bo'ladi)
+    if (b.kind === 'sale' && c.credit_limit != null) {
+      const amount = b.rows.reduce((s, r) => s + Math.round(r.qty * r.price * 100), 0);
+      const after = cents(c.debt) + amount;
+      if (after > cents(c.credit_limit)) {
+        throw badRequest(`«${c.name}»: nasiya chegarasi ${fromCents(cents(c.credit_limit))} so'm — hozirgi qarz ${fromCents(cents(c.debt))}, bu nakladnoy bilan ${fromCents(after)} bo'ladi`);
+      }
     }
     await audit(db, ctx, 'sales_invoice', id, 'create', undefined, b);
     return (await db.query(`${INVOICES} WHERE i.id = $1 ${INVOICES_GROUP}`, [id])).rows[0];
