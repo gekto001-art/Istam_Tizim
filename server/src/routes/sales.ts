@@ -6,6 +6,7 @@ import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { idParam, optText } from '../lib/util.js';
 import { deleteCashBySource, postSalesPayment } from '../services/cash.js';
+import { receiveTransfer, salesStockRouter } from './salesStock.js';
 
 /**
  * Sotuv bo'limi — alohida biznes. 1-qism: ishlab chiqarishdan prixod va hisob-kitob.
@@ -17,6 +18,7 @@ import { deleteCashBySource, postSalesPayment } from '../services/cash.js';
  */
 export const salesRouter = Router();
 salesRouter.use(requireAction('sales.read'));
+salesRouter.use('/sklad', salesStockRouter); // Sotuv bo'limi skladi, postavshiklar, Billz bilan solishtirish
 
 const date = z.coerce.date().transform((d) => d.toISOString().slice(0, 10));
 const LOCK = 'SELECT pg_advisory_xact_lock(740111)'; // tayyor mahsulot skladidan chiqim ketma-ket
@@ -127,8 +129,9 @@ salesRouter.post('/transfers/:id/decide', requireAction('sales.accept'), async (
       'UPDATE sales_transfers SET status = $2, decided_date = $3, reject_reason = $4, decided_by = $5, decided_at = now() WHERE id = $1',
       [id, b.decision, b.decided_date, b.decision === 'rejected' ? b.reason : null, ctx.userId],
     );
-    // rad etilsa mahsulot tayyor mahsulot skladiga qaytadi
+    // rad etilsa mahsulot tayyor mahsulot skladiga qaytadi; qabul qilinsa — Sotuv bo'limi skladiga kiradi (ichki narxda)
     if (b.decision === 'rejected') await db.query('DELETE FROM fg_moves WHERE transfer_id = $1', [id]);
+    else await receiveTransfer(db, id, b.decided_date, ctx.userId);
     await audit(db, ctx, 'sales_transfer', id, 'decide', { status: 'sent' }, b);
     return (await db.query(`${TRANSFERS} WHERE t.id = $1 GROUP BY t.id, uc.full_name, ud.full_name`, [id])).rows[0];
   });

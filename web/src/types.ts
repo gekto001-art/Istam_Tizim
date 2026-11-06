@@ -67,6 +67,7 @@ export const can = {
   salesTransfer: has(['admin', 'sklad']),
   salesAccept: has(['admin', 'sotuv']),
   salesPay: has(['admin', 'buxgalter', 'kassir']),
+  salesStock: has(['admin', 'sotuv']),
   hrRead: has(['admin', 'rahbar', 'hr', 'buxgalter', 'kassir']),
   hrWrite: has(['admin', 'hr']),
   hrWork: has(['admin', 'hr', 'tsex']),
@@ -774,6 +775,109 @@ export interface SalesLedger {
   pending: { count: number; amount_uzs: string };
 }
 
+// ---------- Sotuv bo'limi skladi ----------
+export type SalesDocKind = 'purchase' | 'shop' | 'shop_return' | 'adjust';
+export type SalesMoveKind = 'transfer' | SalesDocKind;
+export interface SalesProduct {
+  id: number;
+  source: 'own' | 'other';
+  order_id: number | null;
+  partiya_no: string | null;
+  sort: 1 | 2 | null;
+  name: string;
+  artikul: string | null;
+  color_name: string | null;
+  size_name: string | null;
+  barcode: string | null;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  is_active: boolean;
+  qty: number;
+  received: number;
+  to_shops: number;
+  avg_cost: string | null;
+  value: string;
+}
+export interface SalesStock {
+  rows: SalesProduct[];
+  totals: { qty: number; value: string };
+}
+export interface SalesMove {
+  id: number;
+  move_date: string;
+  kind: SalesMoveKind;
+  dir: 1 | -1;
+  qty: number;
+  unit_cost: string;
+  transfer_id: number | null;
+  doc_id: number | null;
+  shop_name: string | null;
+  supplier_name: string | null;
+  note: string | null;
+  balance: number;
+  created_by_name: string | null;
+}
+export interface SalesDocItem {
+  product_id: number;
+  source: 'own' | 'other';
+  partiya_no: string | null;
+  name: string;
+  artikul: string | null;
+  color_name: string | null;
+  size_name: string | null;
+  sort: 1 | 2 | null;
+  barcode: string | null;
+  dir: 1 | -1;
+  qty: number;
+  unit_cost: string;
+}
+export interface SalesDoc {
+  id: number;
+  kind: SalesDocKind;
+  doc_date: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  shop_id: string | null;
+  shop_name: string | null;
+  note: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  qty: number;
+  net_qty: number;
+  amount_uzs: string;
+  items: SalesDocItem[];
+}
+export interface SalesSupplier {
+  id: number;
+  name: string;
+  phone: string | null;
+  note: string | null;
+  is_active: boolean;
+  purchased: string;
+  paid: string;
+  debt: string;
+}
+export interface SalesSupplierLedger {
+  supplier: SalesSupplier;
+  opening: string;
+  rows: { date: string; kind: 'purchase' | 'payment'; ref_id: number; note: string | null; debit: string; credit: string; qty: number | null; balance: string }[];
+  totals: { debit: string; credit: string; closing: string };
+}
+export interface BillzShop { id: string; name: string }
+export interface SalesBillzCompare {
+  rows: (Pick<SalesProduct, 'id' | 'source' | 'partiya_no' | 'name' | 'artikul' | 'color_name' | 'size_name' | 'sort' | 'barcode' | 'qty' | 'to_shops'> & {
+    billz_qty: number;
+    billz_sold: number;
+    expected: number;
+    diff: number;
+  })[];
+  unmatched: { barcode: string; product_name: string; sku: string | null; billz_qty: number }[];
+  shops: BillzShop[];
+  sales_start: string | null;
+  synced_at: string | null;
+  no_barcode: number;
+}
+
 // ---------- HR ----------
 export interface HrDepartment { id: number; name: string; producer_id: number | null; producer_name: string | null; is_active: boolean; employees: number }
 export interface Employee {
@@ -900,7 +1004,7 @@ export interface CashEntry {
   partiya_no: string | null;
   pair_id: number | null;
   pair_wallet: string | null;
-  source: 'hr_payment' | 'sales_payment' | null;
+  source: 'hr_payment' | 'sales_payment' | 'sales_supplier_payment' | null;
   created_by_name: string | null;
 }
 export interface CashBalance { wallet_id: number; wallet_name: string; kind: string; business: string; currency: CashCurrency; balance: string }

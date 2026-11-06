@@ -44,10 +44,11 @@ docker compose up -d --build                                  # serverda: hammas
     qabul qilingani ishlab chiqarishdan qarz bo'ladi; boshqa postavshiklardan ham tovar oladi;
     klientlarga Billz do'konlari va agentlar (ulgurji, nasiya) orqali sotadi.
   - [x] 4.1 — o'tkazma (qabul / rad etish), qarz va to'lovlar (`routes/sales.ts`)
-  - [ ] 4.2 — Sotuv bo'limi skladi (bizdan + boshqa postavshiklardan), Billz bilan solishtirish
+  - [x] 4.2 — Sotuv bo'limi skladi (`routes/salesStock.ts`): bizdan + postavshiklardan kirim, do'konga jo'natish, inventarizatsiya,
+    postavshik qarzi va to'lovi (kassaga «Tovar xaridi»), Billz bilan solishtirish (barcode)
   - [ ] 4.3 — agentlar va ulgurji: mijozlar, nakladnoy, nasiya, vozvrat
   - [x] Kassa (`routes/cash.ts`): hamyonlar, kirim / chiqim, transfer, ayriboshlash, avans-hisobot, hisobot
-  - [ ] 4.4 — ikki biznes foydasi alohida; oldi-berdi; HR va Sotuv to'lovlarini kassaga bog'lash
+  - [ ] 4.4 — ikki biznes foydasi alohida; oldi-berdi (HR va Sotuv to'lovlari kassaga bog'langan — tayyor)
 - [ ] 5 — HR, P&L / Balans / Cash Flow, analitika
   - [x] 5.1 — HR (`routes/hr.ts`): xodimlar, tabel, ish nazorati (ishbay) va narxlar, oylik, bonus, to'lovlar, vedomost, akt sverka
 - [ ] 6 — Google Sheets'dan ma'lumot ko'chirish

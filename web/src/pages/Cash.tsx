@@ -20,7 +20,7 @@ const useCashInvalidate = () => {
   return () => qc.invalidateQueries({ queryKey: ['cash'] });
 };
 const amt = (v: string) => (Number(v) ? money(v) : '');
-const SOURCE: Record<string, string> = { hr_payment: 'HR to\'lovi', sales_payment: 'Sotuv to\'lovi' };
+const SOURCE: Record<string, string> = { hr_payment: 'HR to\'lovi', sales_payment: 'Sotuv to\'lovi', sales_supplier_payment: 'Postavshikka to\'lov' };
 
 /** Hamyon tanlash (bo'lim bo'yicha guruhlangan); noAvans — avans-hisobot hamyoni ko'rinmaydi (HR / Sotuv to'lovlari uchun) */
 export function WalletSelect({

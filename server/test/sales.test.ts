@@ -127,3 +127,109 @@ describe('Sotuv bo\'limi: ishlab chiqarishdan prixod va hisob-kitob', () => {
     expect((await api().get('/api/sales/ledger').set(auth(t.hr))).status).toBe(403);
   });
 });
+
+describe('Sotuv bo\'limi skladi: prixod, do\'kon, inventarizatsiya, postavshiklar, Billz', () => {
+  it('ishlab chiqarishdan qabul + postavshikdan prixod → qoldiq, qarz, kassa va Billz solishtirish', async () => {
+    const { order, cell } = await readyGoods();
+    await api().put(`/api/orders/${order.id}/sale-price`).set(auth(t.innovatsiya)).send({ sale_price1: 30000, sale_price2: 15000 });
+    const tr = await api().post('/api/sales/transfers').set(auth(t.sklad)).send({ doc_date: '2027-05-01', rows: [{ order_id: order.id, ...cell, sort: 1, qty: 40 }] });
+    type Row = Record<string, unknown> & { id: number };
+    const sklad = async (q = '') => (await api().get(`/api/sales/sklad/stock?${q}`).set(auth(t.sotuv))).body as { rows: Row[]; totals: { qty: number; value: string } };
+    // javob kutayotgan o'tkazma Sotuv skladida yo'q
+    expect((await sklad(`q=${order.partiya_no}`)).rows).toHaveLength(0);
+    await api().post(`/api/sales/transfers/${tr.body.id}/decide`).set(auth(t.sotuv)).send({ decision: 'accepted', decided_date: '2027-05-02' });
+    const own = (await sklad(`q=${order.partiya_no}`)).rows[0];
+    expect(own).toMatchObject({ source: 'own', partiya_no: order.partiya_no, sort: 1, qty: 40, avg_cost: '30000.00', value: '1200000.00' });
+
+    // o'z tovarida faqat barcode o'zgaradi
+    const put = (id: number, body: object, token = t.sotuv) => api().put(`/api/sales/sklad/products/${id}`).set(auth(token)).send(body);
+    const bcOwn = uniq('BC');
+    expect((await put(own.id, { name: 'x' })).status).toBe(400);
+    expect((await put(own.id, { barcode: bcOwn }, t.buxgalter)).status).toBe(403);
+    expect((await put(own.id, { barcode: bcOwn })).body.barcode).toBe(bcOwn);
+
+    // postavshik va uning tovari
+    const sup = await api().post('/api/sales/sklad/suppliers').set(auth(t.sotuv)).send({ name: uniq('Tashqi ') });
+    expect(sup.status).toBe(201);
+    expect((await api().post('/api/sales/sklad/suppliers').set(auth(t.sotuv)).send({ name: sup.body.name.toLowerCase() })).status).toBe(409);
+    const bcOther = uniq('BC');
+    expect((await api().post('/api/sales/sklad/products').set(auth(t.sotuv)).send({ name: 'Futbolka', barcode: bcOwn })).status).toBe(409);
+    const other = (await api().post('/api/sales/sklad/products').set(auth(t.sotuv)).send({ name: 'Futbolka', artikul: 'F-1', color_name: 'Oq', size_name: '128', barcode: bcOther, supplier_id: sup.body.id })).body;
+    expect(other).toMatchObject({ source: 'other', name: 'Futbolka' });
+
+    const doc = (body: object, token = t.sotuv) => api().post('/api/sales/sklad/docs').set(auth(token)).send(body);
+    // prixod: narx kerak, o'z tovari emas, faqat sotuv
+    expect((await doc({ kind: 'purchase', doc_date: '2027-05-03', supplier_id: sup.body.id, rows: [{ product_id: other.id, qty: 10 }] })).status).toBe(400);
+    expect((await doc({ kind: 'purchase', doc_date: '2027-05-03', supplier_id: sup.body.id, rows: [{ product_id: own.id, qty: 1, price: 1 }] })).body.message).toContain('ishlab chiqarishdan');
+    expect((await doc({ kind: 'purchase', doc_date: '2027-05-03', supplier_id: sup.body.id, rows: [{ product_id: other.id, qty: 10, price: 50000 }] }, t.buxgalter)).status).toBe(403);
+    const p1 = await doc({ kind: 'purchase', doc_date: '2027-05-03', supplier_id: sup.body.id, rows: [{ product_id: other.id, qty: 10, price: 50000 }] });
+    expect(p1.status).toBe(201);
+    expect(p1.body).toMatchObject({ qty: 10, amount_uzs: '500000.00', supplier_name: sup.body.name });
+    await doc({ kind: 'purchase', doc_date: '2027-05-04', supplier_id: sup.body.id, rows: [{ product_id: other.id, qty: 10, price: 60000 }] });
+    expect((await sklad('q=futbolka&source=other')).rows.find((r) => r.id === other.id)).toMatchObject({ qty: 20, avg_cost: '55000.00' });
+
+    // do'konga jo'natish: do'kon kerak, skladdagidan ko'p emas
+    const shopId = uniq('shop-');
+    await pool.query('INSERT INTO billz_shops (id, name) VALUES ($1, $2)', [shopId, 'Test do\'kon']);
+    expect((await doc({ kind: 'shop', doc_date: '2027-05-05', rows: [{ product_id: own.id, qty: 5 }] })).status).toBe(400);
+    expect((await doc({ kind: 'shop', doc_date: '2027-05-05', shop_id: shopId, rows: [{ product_id: own.id, qty: 41 }] })).body.message).toContain('skladda 40 dona');
+    const s1 = await doc({ kind: 'shop', doc_date: '2027-05-05', shop_id: shopId, rows: [{ product_id: own.id, qty: 30 }, { product_id: other.id, qty: 12 }] });
+    expect(s1.body).toMatchObject({ shop_name: 'Test do\'kon', qty: 42, net_qty: -42 });
+    await doc({ kind: 'shop_return', doc_date: '2027-05-06', shop_id: shopId, rows: [{ product_id: own.id, qty: 2 }] });
+    // inventarizatsiya: sabab kerak; − kamomad
+    expect((await doc({ kind: 'adjust', doc_date: '2027-05-07', rows: [{ product_id: own.id, qty: -1 }] })).status).toBe(400);
+    await doc({ kind: 'adjust', doc_date: '2027-05-07', note: 'Sanoq', rows: [{ product_id: own.id, qty: -1 }, { product_id: other.id, qty: 1 }] });
+    let all = (await sklad('only=all')).rows;
+    expect(all.find((r) => r.id === own.id)).toMatchObject({ qty: 11, to_shops: 28 });
+    expect(all.find((r) => r.id === other.id)).toMatchObject({ qty: 9, to_shops: 12 });
+
+    // kirimni o'chirsa qoldiq manfiy bo'lmasin; jo'natishni o'chirsa qaytadi
+    expect((await api().delete(`/api/sales/sklad/docs/${p1.body.id}`).set(auth(t.sotuv))).status).toBe(409);
+    expect((await api().delete(`/api/sales/sklad/docs/${s1.body.id}`).set(auth(t.sotuv))).status).toBe(204);
+    all = (await sklad('only=all')).rows;
+    expect(all.find((r) => r.id === other.id)).toMatchObject({ qty: 21, to_shops: 0 });
+    expect((await doc({ kind: 'shop', doc_date: '2027-05-08', shop_id: shopId, rows: [{ product_id: own.id, qty: 30 }, { product_id: other.id, qty: 12 }] })).status).toBe(201);
+
+    const moves = (await api().get(`/api/sales/sklad/products/${own.id}/moves`).set(auth(t.sotuv))).body;
+    expect(moves.moves.map((m: { kind: string; balance: number }) => [m.kind, m.balance])).toEqual([
+      ['shop', 11],
+      ['adjust', 41],
+      ['shop_return', 42],
+      ['transfer', 40],
+    ]);
+
+    // postavshik qarzi va to'lov (kassaga «Tovar xaridi»)
+    const wallet = (await api().post('/api/cash/wallets').set(auth(t.buxgalter)).send({ name: uniq('Tijorat kassa '), business: 'tijorat', kind: 'naqd' })).body.id;
+    const pay = (body: object, token = t.buxgalter) => api().post('/api/sales/sklad/supplier-payments').set(auth(token)).send({ supplier_id: sup.body.id, method: 'naqd', ...body });
+    expect((await pay({ pay_date: '2027-05-10', amount_uzs: 100 }, t.sotuv)).status).toBe(403);
+    const pp = await pay({ pay_date: '2027-05-10', amount_uzs: 700000, wallet_id: wallet });
+    expect(pp.status).toBe(201);
+    const sups = (await api().get('/api/sales/sklad/suppliers').set(auth(t.sotuv))).body;
+    expect(sups.find((s: { id: number }) => s.id === sup.body.id)).toMatchObject({ purchased: '1100000.00', paid: '700000.00', debt: '400000.00' });
+    const led = (await api().get(`/api/sales/sklad/suppliers/${sup.body.id}/ledger?from=2027-05-04`).set(auth(t.sotuv))).body;
+    expect(led.opening).toBe('500000.00');
+    expect(led.rows.map((r: { kind: string; balance: string }) => [r.kind, r.balance])).toEqual([
+      ['purchase', '1100000.00'],
+      ['payment', '400000.00'],
+    ]);
+    const ce = (await api().get(`/api/cash/entries?wallet_id=${wallet}`).set(auth(t.buxgalter))).body;
+    expect(ce).toHaveLength(1);
+    expect(ce[0]).toMatchObject({ op_name: 'Tovar xaridi', counterparty: sup.body.name, amount_out: '700000.00', source: 'sales_supplier_payment' });
+    expect((await api().delete(`/api/cash/entries/${ce[0].id}`).set(auth(t.buxgalter))).body.message).toContain('postavshik');
+    expect((await api().delete(`/api/sales/sklad/supplier-payments/${pp.body.id}`).set(auth(t.buxgalter))).status).toBe(204);
+    expect((await api().get(`/api/cash/entries?wallet_id=${wallet}`).set(auth(t.buxgalter))).body).toHaveLength(0);
+
+    // Billz bilan solishtirish: jo'natilgan − sotilgan = kutilgan; Billz qoldig'i bilan farq
+    await pool.query(
+      `INSERT INTO billz_stock (shop_id, product_id, product_name, barcode, qty) VALUES ($1, $2, 'Ko''ylak', $3, 25), ($1, $4, 'Futbolka', $5, 12), ($1, $6, 'Begona', $7, 3)`,
+      [shopId, uniq('p'), bcOwn, uniq('p'), bcOther, uniq('p'), uniq('BC')],
+    );
+    await pool.query(`INSERT INTO billz_sales (date, shop_id, product_id, product_name, barcode, net_sold) VALUES ('2027-05-09', $1, $2, 'Ko''ylak', $3, 4)`, [shopId, uniq('p'), bcOwn]);
+    const cmp = (await api().get(`/api/sales/sklad/billz?shop_id=${shopId}`).set(auth(t.sotuv))).body;
+    expect(cmp.rows.find((r: { id: number }) => r.id === own.id)).toMatchObject({ to_shops: 28, billz_sold: 4, expected: 24, billz_qty: 25, diff: 1 });
+    expect(cmp.rows.find((r: { id: number }) => r.id === other.id)).toMatchObject({ to_shops: 12, expected: 12, billz_qty: 12, diff: 0 });
+    expect(cmp.unmatched.map((u: { product_name: string }) => u.product_name)).toEqual(['Begona']);
+
+    expect((await api().get('/api/sales/sklad/stock').set(auth(t.hr))).status).toBe(403);
+  });
+});

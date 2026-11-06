@@ -2,7 +2,7 @@ import type { Db } from '../db/pool.js';
 import { badRequest, notFound } from '../lib/errors.js';
 
 /** HR va Sotuv to'lovlarini kassaga yozish (so'mda). Manba (source, source_id) bilan bog'lanadi. */
-export type CashSource = 'hr_payment' | 'sales_payment';
+export type CashSource = 'hr_payment' | 'sales_payment' | 'sales_supplier_payment';
 
 async function walletOf(db: Db, id: number) {
   const w = (await db.query('SELECT * FROM cash_wallets WHERE id = $1', [id])).rows[0];
@@ -60,6 +60,18 @@ export async function postSalesPayment(
   ).rows[0].id as number;
   await db.query('UPDATE cash_entries SET pair_id = $1 WHERE id = $1', [out]);
   await db.query(INSERT, [p.pay_date, p.to_wallet_id, op, null, null, 'Sotuv bo\'limi', 'FTB', note, p.amount, 0, null, out, 'sales_payment', p.id, userId]);
+}
+
+/** Sotuv bo'limi → postavshikka to'lov → kassada chiqim: «Tovar xaridi», kontragent — postavshik */
+export async function postSupplierPayment(
+  db: Db,
+  p: { id: number; pay_date: string; wallet_id: number; amount: number | string; method: string; note: string | null; supplier: string },
+  userId: number,
+) {
+  await walletOf(db, p.wallet_id);
+  const op = await idOf(db, 'SELECT id FROM cash_op_types WHERE name = $1', 'Tovar xaridi', 'Tranzaksiya turi');
+  const note = ['Sotuv bo\'limi: postavshikka to\'lov', p.note].filter(Boolean).join(' · ');
+  await db.query(INSERT, [p.pay_date, p.wallet_id, op, null, null, p.supplier, 'TB', note, 0, p.amount, null, null, 'sales_supplier_payment', p.id, userId]);
 }
 
 export async function deleteCashBySource(db: Db, source: CashSource, id: number) {
