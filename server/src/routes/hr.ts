@@ -49,13 +49,23 @@ hrRouter.get('/departments', async (_req, res) => {
   );
 });
 
-const deptBody = z.object({ name: z.string().trim().min(1).max(100), producer_id: idParam.nullish(), is_active: z.boolean().optional() });
+/** business — ish haqi qaysi biznes xarajati (P&L): ishlab chiqarish, Sotuv bo'limi yoki umumiy */
+const deptBody = z.object({
+  name: z.string().trim().min(1).max(100),
+  producer_id: idParam.nullish(),
+  business: z.enum(['ishlab', 'sotuv', 'umumiy']).optional(),
+  is_active: z.boolean().optional(),
+});
 
 hrRouter.post('/departments', requireAction('hr.write'), async (req, res) => {
   const ctx = ctxOf(req);
   const b = deptBody.parse(req.body);
   const row = await tx(async (db) => {
-    const d = (await db.query('INSERT INTO hr_departments (name, producer_id) VALUES ($1, $2) RETURNING *', [b.name, b.producer_id ?? null])).rows[0];
+    const d = (
+      await db.query('INSERT INTO hr_departments (name, producer_id, business) VALUES ($1, $2, $3) RETURNING *', [
+        b.name, b.producer_id ?? null, b.business ?? (b.producer_id ? 'ishlab' : 'umumiy'),
+      ])
+    ).rows[0];
     await audit(db, ctx, 'hr_department', d.id, 'create', undefined, d);
     return d;
   });
@@ -71,9 +81,10 @@ hrRouter.patch('/departments/:id', requireAction('hr.write'), async (req, res) =
     if (!old) throw notFound('Bo\'lim');
     const d = (
       await db.query(
-        `UPDATE hr_departments SET name = coalesce($2, name), producer_id = CASE WHEN $3 THEN $4 ELSE producer_id END, is_active = coalesce($5, is_active)
+        `UPDATE hr_departments SET name = coalesce($2, name), producer_id = CASE WHEN $3 THEN $4 ELSE producer_id END, is_active = coalesce($5, is_active),
+                business = coalesce($6, business)
           WHERE id = $1 RETURNING *`,
-        [id, b.name ?? null, b.producer_id !== undefined, b.producer_id ?? null, b.is_active ?? null],
+        [id, b.name ?? null, b.producer_id !== undefined, b.producer_id ?? null, b.is_active ?? null, b.business ?? null],
       )
     ).rows[0];
     await audit(db, ctx, 'hr_department', id, 'update', old, d);
@@ -613,7 +624,7 @@ hrRouter.delete('/payments/:id', requireAction('hr.pay'), async (req, res) => {
 
 // ---------- Nachisleniya: vedomost va xodim kartochkasi ----------
 /** Har xodim bo'yicha kunlik harakatlar: hisoblangan (oylik, ishbay, bonus, boshqa, ushlab qolish) va to'langan (naqd, bank) */
-const EVENTS = `
+export const EVENTS = `
   SELECT t.employee_id, t.work_date AS d, round(t.hours * hr_rate_at(t.employee_id, t.work_date), 2) AS salary,
          0::numeric AS piece, 0::numeric AS bonus, 0::numeric AS other, 0::numeric AS penalty, 0::numeric AS cash, 0::numeric AS bank
     FROM hr_timesheet t WHERE NOT t.absent AND t.hours > 0

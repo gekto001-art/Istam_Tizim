@@ -18,6 +18,7 @@ import { tsexRouter } from './routes/tsex.js';
 import { otkRouter } from './routes/otk.js';
 import { billzRouter } from './routes/billz.js';
 import { reportsRouter } from './routes/reports.js';
+import { financeRouter } from './routes/finance.js';
 import { salesRouter } from './routes/sales.js';
 import { hrRouter } from './routes/hr.js';
 import { cashRouter } from './routes/cash.js';
@@ -53,6 +54,7 @@ export function createApp() {
   api.use('/otk', requireAuth, otkRouter);
   api.use('/billz', requireAuth, billzRouter);
   api.use('/reports', requireAuth, reportsRouter);
+  api.use('/finance', requireAuth, financeRouter);
   api.use('/sales', requireAuth, salesRouter);
   api.use('/hr', requireAuth, hrRouter);
   api.use('/cash', requireAuth, cashRouter);

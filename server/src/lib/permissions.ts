@@ -68,7 +68,8 @@ export type Action =
   | 'import.run' // Google Sheets'dan import (xodimlar, oyliklar, ish turlari, kassa)
   | 'billz.read' // Billz'dan olingan qoldiq va sotuv, qo'lda yangilash
   | 'billz.manage' // Billz kaliti va sozlamalari
-  | 'reports.read'; // hisobotlar (ABC tahlil...)
+  | 'reports.read' // hisobotlar (ABC tahlil...)
+  | 'reports.finance'; // moliyaviy hisobotlar: P&L, Cash Flow, Balans
 
 const MATRIX: Record<Action, Role[]> = {
   'users.manage': ['admin'],
@@ -109,6 +110,7 @@ const MATRIX: Record<Action, Role[]> = {
   'billz.read': ['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk'],
   'billz.manage': ['admin'],
   'reports.read': ['admin', 'rahbar', 'buxgalter', 'sotuv'],
+  'reports.finance': ['admin', 'rahbar', 'buxgalter'],
 };
 
 export function can(role: Role, action: Action): boolean {

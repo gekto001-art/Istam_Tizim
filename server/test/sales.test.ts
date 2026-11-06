@@ -320,3 +320,94 @@ describe('Agentlar va ulgurji: nakladnoy, vozvrat, nasiya, to\'lov, hisobot', ()
     expect((await api().get(`${W}/clients`).set(auth(t.hr))).status).toBe(403);
   });
 });
+
+describe('P&L: har biznes alohida', () => {
+  it('ishlab chiqarish, Sotuv bo\'limi va umumiy foyda oylar kesimida', async () => {
+    // 2033 — boshqa testlar bu davrga yozmaydi
+    const { order, cell } = await readyGoods(); // tannarx 20 000 (16 000 mato + 4 000 ish)
+    await api().put(`/api/orders/${order.id}/sale-price`).set(auth(t.innovatsiya)).send({ sale_price1: 30000, sale_price2: 15000 });
+    const tr = await api().post('/api/sales/transfers').set(auth(t.sklad)).send({ doc_date: '2033-01-05', rows: [{ order_id: order.id, ...cell, sort: 1, qty: 10 }] });
+    await api().post(`/api/sales/transfers/${tr.body.id}/decide`).set(auth(t.sotuv)).send({ decision: 'accepted', decided_date: '2033-01-10' });
+    const prod = ((await api().get(`/api/sales/sklad/stock?only=all&q=${order.partiya_no}`).set(auth(t.sotuv))).body.rows as { id: number }[])[0];
+
+    // ulgurji: 4 × 50 000 (tannarx 30 000), komissiya 5%; fevralda 1 dona vozvrat
+    const W = '/api/sales/ulgurji';
+    const agent = (await api().post(`${W}/agents`).set(auth(t.sotuv)).send({ name: uniq('PnL agent '), commission_pct: 5 })).body;
+    const client = (await api().post(`${W}/clients`).set(auth(t.sotuv)).send({ name: uniq('PnL mijoz '), agent_id: agent.id })).body;
+    const inv = (kind: string, doc_date: string, qty: number) =>
+      api().post(`${W}/invoices`).set(auth(t.sotuv)).send({ kind, doc_date, client_id: client.id, rows: [{ product_id: prod.id, qty, price: 50000 }] });
+    expect((await inv('sale', '2033-01-15', 4)).status).toBe(201);
+    expect((await inv('return', '2033-02-03', 1)).status).toBe(201);
+    // inventarizatsiya: 1 dona kamomad (30 000)
+    await api().post('/api/sales/sklad/docs').set(auth(t.sotuv)).send({ kind: 'adjust', doc_date: '2033-01-20', note: 'Sanoq', rows: [{ product_id: prod.id, qty: -1 }] });
+    // do'kon (Billz): sotuv 100 000, tannarx 60 000
+    await pool.query(`INSERT INTO billz_sales (date, shop_id, product_id, product_name, net_sold, net_sales, net_profit, supply_sum) VALUES ('2033-01-05', 'pnl-shop', 'pnl-p', 'x', 2, 100000, 40000, 60000)`);
+
+    // kassa: hamyon turi — biznes; ish haqi (3001) va xomashyo (4005) olinmaydi; transfer — P&L ga kirmaydi
+    const m = (await api().get('/api/cash/meta').set(auth(t.buxgalter))).body as { op_types: Named[]; items: { id: number; code: number }[]; centers: Named[] };
+    const op = (n: string) => m.op_types.find((o) => o.name === n)!.id;
+    const item = (c: number) => m.items.find((i) => i.code === c)!.id;
+    const center = m.centers.find((c) => c.name === 'Administratsiya')!.id;
+    const wallet = async (business: string) => (await api().post('/api/cash/wallets').set(auth(t.buxgalter)).send({ name: uniq(`PnL ${business} `), business })).body.id as number;
+    const [wi, wt, wm] = [await wallet('ishlab'), await wallet('tijorat'), await wallet('moliya')];
+    const exp = (wallet_id: number, code: number, amount_out: number) => ({ wallet_id, op_type_id: op('Xarajatlar'), center_id: center, item_id: item(code), amount_out });
+    const cash = await api().post('/api/cash/entries').set(auth(t.buxgalter)).send({
+      entry_date: '2033-01-25',
+      rows: [
+        ...[wi, wt, wm].map((wallet_id) => ({ wallet_id, op_type_id: op('Kun boshiga qoldiq'), amount_in: 1000000 })),
+        exp(wi, 2002, 50000),
+        exp(wi, 3001, 999),
+        exp(wi, 4005, 777),
+        exp(wm, 1001, 70000),
+        { wallet_id: wt, op_type_id: op('Boshqa tushumlar'), center_id: m.centers.find((c) => c.name === 'Boshqa daromadlar')!.id, amount_in: 5000 },
+        { wallet_id: wm, op_type_id: op('Ichki transfer'), to_wallet_id: wi, amount_out: 300000 },
+      ],
+    });
+    expect(cash.status).toBe(201);
+
+    // HR: umumiy bo'lim xodimiga bonus 40 000
+    const dept = (await api().post('/api/hr/departments').set(auth(t.hr)).send({ name: uniq('PnL bo\'lim '), business: 'umumiy' })).body;
+    expect(dept.business).toBe('umumiy');
+    const emp = (await api().post('/api/hr/employees').set(auth(t.hr)).send({ department_id: dept.id, hired_on: '2033-01-01', full_name: uniq('PNL XODIM ') })).body;
+    await api().post('/api/hr/adjustments').set(auth(t.hr)).send({ adj_date: '2033-01-12', employee_id: emp.id, kind: 'bonus', amount: 40000 });
+
+    const get = (token = A) => api().get('/api/finance/pnl?from=2033-01-01&to=2033-02-28').set(auth(token));
+    expect((await get(t.sotuv)).status).toBe(403);
+    const r = await get();
+    expect(r.status).toBe(200);
+    expect(r.body.months).toEqual(['2033-01', '2033-02']);
+    type L = { key: string; values: Record<string, string>; total: string };
+    const sec = (biz: string) => Object.fromEntries((r.body.sections.find((s: { biz: string }) => s.biz === biz).lines as L[]).map((l) => [l.key, [l.values['2033-01'], l.values['2033-02']]]));
+
+    const p = sec('ishlab');
+    expect(p.revenue).toEqual(['300000.00', '0.00']);
+    expect(p.cogs).toEqual(['-160000.00', '0.00']); // 10 × (20 000 − 4 000 ish)
+    expect(p.gross).toEqual(['140000.00', '0.00']);
+    expect(p['exp:2000']).toEqual(['-50000.00', '0.00']);
+    expect(p['exp:3000']).toBeUndefined();
+    expect(p['exp:4000']).toBeUndefined();
+    expect(p.net).toEqual(['90000.00', '0.00']);
+
+    const s = sec('sotuv');
+    expect(s.wholesale).toEqual(['200000.00', '-50000.00']);
+    expect(s.shop).toEqual(['100000.00', '0.00']);
+    expect(s.cogs_wholesale).toEqual(['-120000.00', '30000.00']);
+    expect(s.cogs_shop).toEqual(['-60000.00', '0.00']);
+    expect(s.gross).toEqual(['120000.00', '-20000.00']);
+    expect(s.adjust).toEqual(['-30000.00', '0.00']);
+    expect(s.commission).toEqual(['-10000.00', '2500.00']);
+    expect(s.other_income).toEqual(['5000.00', '0.00']);
+    expect(s.net).toEqual(['85000.00', '-17500.00']);
+
+    const u = sec('umumiy');
+    expect(u.wages).toEqual(['-40000.00', '0.00']);
+    expect(u['exp:1000']).toEqual(['-70000.00', '0.00']);
+    expect(u.net).toEqual(['-110000.00', '0.00']);
+
+    const company = (r.body.company as L[]).find((l) => l.key === 'net')!;
+    expect(company.values).toEqual({ '2033-01': '65000.00', '2033-02': '-17500.00' });
+    expect(company.total).toBe('47500.00');
+
+    await pool.query(`DELETE FROM billz_sales WHERE shop_id = 'pnl-shop'`);
+  });
+});

@@ -106,6 +106,22 @@ cashRouter.patch('/items/:id', requireAction('cash.manage'), async (req, res) =>
   res.json(row);
 });
 
+/** Tranzaksiya turi P&L ga kiradimi (chiqim — xarajat, kirim — boshqa daromad) */
+cashRouter.patch('/op-types/:id', requireAction('cash.manage'), async (req, res) => {
+  const ctx = ctxOf(req);
+  const id = idParam.parse(req.params.id);
+  const b = z.object({ in_pnl: z.boolean() }).parse(req.body);
+  const row = await tx(async (db) => {
+    const old = (await db.query('SELECT * FROM cash_op_types WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!old) throw notFound('Tranzaksiya turi');
+    if (b.in_pnl && old.special && old.special !== 'expense') throw badRequest('Transfer, ayriboshlash va qoldiq P&L ga kirmaydi');
+    const o = (await db.query('UPDATE cash_op_types SET in_pnl = $2 WHERE id = $1 RETURNING *', [id, b.in_pnl])).rows[0];
+    await audit(db, ctx, 'cash_op_type', id, 'update', old, o);
+    return o;
+  });
+  res.json(row);
+});
+
 // ---------- Kassa yozuvlari ----------
 const rowSchema = z.object({
   wallet_id: idParam,
