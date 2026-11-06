@@ -822,6 +822,11 @@ export function CashSettingsPage() {
     onSuccess: () => inv(),
     onError: (e) => toast(e instanceof Error ? e.message : String(e)),
   });
+  const patchOp = useMutation({
+    mutationFn: (b: { id: number; in_pnl: boolean }) => api(`/cash/op-types/${b.id}`, { method: 'PATCH', body: { in_pnl: b.in_pnl } }),
+    onSuccess: () => inv(),
+    onError: (e) => toast(e instanceof Error ? e.message : String(e)),
+  });
   if (!me) return null;
   const write = can.cashManage(me.role);
   const m = meta.data;
@@ -888,6 +893,41 @@ export function CashSettingsPage() {
             <ErrorText error={addW.error} />
           </div>
         )}
+      </div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h2>Tranzaksiya turlari</h2>
+        <p className="note">
+          «P&L ga kiradi» belgilanganlar foyda-zarar hisobotiga tushadi: chiqim — davr xarajati (hamyon bo'limi bo'yicha biznesga), kirim — boshqa daromad. Sotuv,
+          tovar xaridi va ish haqi kassadan olinmaydi — ular tizim hujjatlaridan (nakladnoy, o'tkazma, HR) hisoblanadi.
+        </p>
+        <div className="tw">
+          <table>
+            <thead>
+              <tr>
+                <th>Nomi</th>
+                <th>Yo'nalish</th>
+                <th>P&L ga kiradi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(m?.op_types ?? []).map((x) => (
+                <tr key={x.id}>
+                  <td>{x.name}</td>
+                  <td>{x.flow === 'in' ? 'Kirim' : x.flow === 'out' ? 'Chiqim' : 'Kirim / chiqim'}</td>
+                  <td>
+                    {write && (!x.special || x.special === 'expense') ? (
+                      <input type="checkbox" checked={x.in_pnl} onChange={(e) => patchOp.mutate({ id: x.id, in_pnl: e.target.checked })} aria-label={`${x.name} P&L ga kiradi`} />
+                    ) : x.in_pnl ? (
+                      'ha'
+                    ) : (
+                      "yo'q"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div className="card">
         <h2>Xarajat elementlari</h2>

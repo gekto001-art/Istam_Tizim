@@ -81,6 +81,7 @@ export const can = {
   billzRead: has(['admin', 'rahbar', 'sklad', 'sotuv', 'buxgalter', 'otk']),
   billzManage: has(['admin']),
   reportsRead: has(['admin', 'rahbar', 'buxgalter', 'sotuv']),
+  reportsFinance: has(['admin', 'rahbar', 'buxgalter']),
 };
 
 // ---------- Ma'lumotnomalar ----------
@@ -953,7 +954,8 @@ export interface WholesaleReport {
 }
 
 // ---------- HR ----------
-export interface HrDepartment { id: number; name: string; producer_id: number | null; producer_name: string | null; is_active: boolean; employees: number }
+export type PnlBusiness = 'ishlab' | 'sotuv' | 'umumiy';
+export interface HrDepartment { id: number; name: string; producer_id: number | null; producer_name: string | null; business: PnlBusiness; is_active: boolean; employees: number }
 export interface Employee {
   id: number;
   full_name: string;
@@ -1042,7 +1044,7 @@ export interface EmployeeStatement {
 // ---------- Kassa ----------
 export type CashCurrency = 'UZS' | 'USD' | 'CNY' | 'EUR' | 'RUB';
 export interface CashWallet { id: number; name: string; business: 'moliya' | 'tijorat' | 'ishlab'; kind: 'naqd' | 'karta' | 'bank' | 'avans' | 'boshqa'; is_active: boolean; sort: number }
-export interface CashOpType { id: number; name: string; flow: 'in' | 'out' | 'both'; special: 'opening' | 'transfer' | 'exchange' | 'expense' | null; is_active: boolean }
+export interface CashOpType { id: number; name: string; flow: 'in' | 'out' | 'both'; special: 'opening' | 'transfer' | 'exchange' | 'expense' | null; is_active: boolean; in_pnl: boolean }
 export interface CashCenter { id: number; kind: 'PC' | 'CC' | 'IC'; name: string; code: string | null; is_active: boolean }
 export interface CashItem { id: number; code: number; name: string; is_active: boolean; group_code: number; group_name: string | null }
 export interface CashMeta {
@@ -1088,3 +1090,8 @@ export interface CashReport {
   by_item: { item_id: number; code: number; name: string; group_code: number; group_name: string | null; center_kind: string | null; center_name: string | null; amount_uzs: string }[];
 }
 export interface CashAvans { responsible: string; currency: CashCurrency; opening: string; given: string; reported: string; closing: string }
+
+// ---------- Moliyaviy hisobotlar ----------
+export interface PnlLine { key: string; label: string; kind: 'line' | 'sub' | 'total'; values: Record<string, string>; total: string }
+export interface PnlSection { biz: PnlBusiness; title: string; lines: PnlLine[] }
+export interface Pnl { from: string; to: string; months: string[]; sections: PnlSection[]; company: PnlLine[]; excluded_items: number[] }

@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { ErrorText, Field, Modal, PageHead, fmtDate, fmtNum, useToast } from '../components/ui';
-import { can, type Employee, type EmployeeDetail, type EmployeeStatement, type HrDepartment, type Producer } from '../types';
+import { can, type Employee, type EmployeeDetail, type EmployeeStatement, type HrDepartment, type PnlBusiness, type Producer } from '../types';
 import { useCatalog } from './Orders';
 import { money, num } from './purchaseUi';
 import { today } from './stockUi';
@@ -307,6 +307,8 @@ export function HrEmployeesPage() {
   );
 }
 
+const PNL_BUSINESS: Record<PnlBusiness, string> = { ishlab: 'Ishlab chiqarish', sotuv: 'Sotuv bo\'limi', umumiy: 'Umumiy' };
+
 function DepartmentsCard({ write }: { write: boolean }) {
   const toast = useToast();
   const inv = useHrInvalidate();
@@ -337,6 +339,7 @@ function DepartmentsCard({ write }: { write: boolean }) {
             <tr>
               <th>Bo'lim</th>
               <th>Ishlab chiqarishdagi tsex</th>
+              <th>Ish haqi — qaysi biznes (P&L)</th>
               <th className="n">Xodimlar</th>
               <th>Holat</th>
             </tr>
@@ -359,6 +362,19 @@ function DepartmentsCard({ write }: { write: boolean }) {
                     </select>
                   ) : (
                     x.producer_name ?? '—'
+                  )}
+                </td>
+                <td>
+                  {write ? (
+                    <select value={x.business} aria-label={`${x.name} biznesi`} onChange={(e) => patch.mutate({ id: x.id, body: { business: e.target.value } })}>
+                      {Object.entries(PNL_BUSINESS).map(([k, l]) => (
+                        <option key={k} value={k}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    PNL_BUSINESS[x.business]
                   )}
                 </td>
                 <td className="n">{fmtNum(x.employees)}</td>

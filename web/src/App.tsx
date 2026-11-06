@@ -21,6 +21,7 @@ import { TsexOstatkaPage, TsexPrixodPage, TsexProductionPage, TsexXaPage } from 
 import { OtkFinalPage, SpisaniyaPage, TayyorPage } from './pages/OtkFinal';
 import { BillzSalesPage, BillzSettingsPage, BillzStockPage } from './pages/Billz';
 import { AbcPage } from './pages/Reports';
+import { PnlPage } from './pages/Finance';
 import { SalesLedgerPage, SalesPrixodPage, TransferPage } from './pages/Sales';
 import { SalesBillzPage, SalesDocsPage, SalesStockPage, SalesSuppliersPage } from './pages/SalesStock';
 import { AgentsPage, ClientsPage, InvoicePrintPage, WholesaleInvoicePage } from './pages/Wholesale';
@@ -157,7 +158,13 @@ const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
           { to: '/hr/vedomost', label: 'Vedomost', show: (r) => can.hrRead(r) },
         ],
       ],
-      ['Hisobotlar', [{ to: '/hisobot/abc', label: 'ABC tahlil', show: (r) => can.reportsRead(r) }]],
+      [
+        'Hisobotlar',
+        [
+          { to: '/hisobot/pnl', label: 'P&L (foyda va zarar)', show: (r) => can.reportsFinance(r) },
+          { to: '/hisobot/abc', label: 'ABC tahlil', show: (r) => can.reportsRead(r) },
+        ],
+      ],
       ["Ma'lumotnomalar",[{ to: '/catalog', label: 'Ranglar, xomashyo...', show: () => true }]],
       [
         'Tizim',
@@ -318,6 +325,7 @@ export function App() {
         {can.billzRead(me.role) && <Route path="/billz/sotuv" element={<BillzSalesPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sozlamalar" element={<BillzSettingsPage />} />}
         {can.reportsRead(me.role) && <Route path="/hisobot/abc" element={<AbcPage />} />}
+        {can.reportsFinance(me.role) && <Route path="/hisobot/pnl" element={<PnlPage />} />}
         {can.cashRead(me.role) && <Route path="/kassa/kiritish" element={<CashInputPage />} />}
         {can.cashRead(me.role) && <Route path="/kassa/jurnal" element={<CashJournalPage />} />}
         {can.cashRead(me.role) && <Route path="/kassa/hisobot" element={<CashReportPage />} />}

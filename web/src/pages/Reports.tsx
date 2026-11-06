@@ -54,7 +54,7 @@ const Pill = ({ c }: { c: Cls }) => <span className={`pill ${TONE[c]}`}>{c}</spa
 const monthStart = () => `${today().slice(0, 8)}01`;
 
 /** CSV (Excel ochadi): ; ajratgich, UTF-8 BOM */
-function downloadCsv(name: string, rows: (string | number | null)[][]) {
+export function downloadCsv(name: string, rows: (string | number | null)[][]) {
   const esc = (v: string | number | null) => {
     const s = v == null ? '' : typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',') : v;
     return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

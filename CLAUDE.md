@@ -49,7 +49,10 @@ docker compose up -d --build                                  # serverda: hammas
   - [x] 4.3 — agentlar va ulgurji (`routes/salesWholesale.ts`): mijozlar, nakladnoy (sotuv / vozvrat), nasiya va muddat,
     mijoz to'lovi (kassaga «Sotuvdan tushum»), agent hisoboti va komissiya
   - [x] Kassa (`routes/cash.ts`): hamyonlar, kirim / chiqim, transfer, ayriboshlash, avans-hisobot, hisobot
-  - [ ] 4.4 — ikki biznes foydasi alohida; oldi-berdi (HR va Sotuv to'lovlari kassaga bog'langan — tayyor)
+  - [x] 4.4 — ikki biznes foydasi alohida: P&L (`routes/finance.ts`) — ishlab chiqarish / Sotuv bo'limi / umumiy, oylar kesimida;
+    kassa: hamyon bo'limi → biznes, tranzaksiya turida «P&L ga kiradi»; ish haqi HR'dan (bo'lim → biznes)
+  - [ ] oldi-berdi (DT-KT) — kontragentlar bo'yicha (HR va Sotuv to'lovlari kassaga bog'langan — tayyor)
 - [ ] 5 — HR, P&L / Balans / Cash Flow, analitika
+  - [ ] 5.2 — Cash Flow, Balans
   - [x] 5.1 — HR (`routes/hr.ts`): xodimlar, tabel, ish nazorati (ishbay) va narxlar, oylik, bonus, to'lovlar, vedomost, akt sverka
 - [ ] 6 — Google Sheets'dan ma'lumot ko'chirish

@@ -171,3 +171,11 @@ table.picker td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
   .card.print-sheet { border: 0; padding: 0; }
   body { background: #fff; color: #000; }
 }
+
+/* Moliyaviy hisobotlar (P&L) */
+table.pnl td, table.pnl th { white-space: nowrap; }
+table.pnl td:first-child, table.pnl th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; white-space: normal; min-width: 220px; }
+table.pnl tr.sub td { font-weight: 600; background: var(--soft); }
+table.pnl tr.total td { font-weight: 700; background: var(--soft); border-top: 2px solid var(--ink); }
+table.pnl td.neg { color: var(--bad); }
+table.pnl td.indent { padding-left: 22px; }
