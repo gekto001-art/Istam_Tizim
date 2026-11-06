@@ -18,7 +18,7 @@ import { deleteCashBySource, postSupplierPayment } from '../services/cash.js';
 export const salesStockRouter = Router();
 
 const date = z.coerce.date().transform((d) => d.toISOString().slice(0, 10));
-const LOCK = 'SELECT pg_advisory_xact_lock(740112)'; // Sotuv skladi harakatlari ketma-ket
+export const LOCK = 'SELECT pg_advisory_xact_lock(740112)'; // Sotuv skladi harakatlari ketma-ket
 const cents = (v: string | number | null) => Math.round(Number(v ?? 0) * 100);
 const fromCents = (c: number) => (c / 100).toFixed(2);
 
@@ -45,17 +45,18 @@ export async function receiveTransfer(db: Db, transferId: number, moveDate: stri
 }
 
 // ---------- Tovarlar va qoldiq ----------
-const STOCK = `
+export const STOCK = `
   SELECT p.id, p.source, p.order_id, o.partiya_no, p.color_id, p.size_id, p.sort, p.name, p.artikul, p.color_name, p.size_name,
-         p.barcode, p.supplier_id, sp.name AS supplier_name, p.is_active,
+         p.barcode, p.supplier_id, sp.name AS supplier_name, p.is_active, p.wholesale_price,
          coalesce(sum(m.dir * m.qty), 0)::int AS qty,
          coalesce(sum(m.qty) FILTER (WHERE m.kind IN ('transfer', 'purchase')), 0)::int AS received,
          (coalesce(sum(m.qty) FILTER (WHERE m.kind = 'shop'), 0) - coalesce(sum(m.qty) FILTER (WHERE m.kind = 'shop_return'), 0))::int AS to_shops,
+         (coalesce(sum(m.qty) FILTER (WHERE m.kind = 'sale'), 0) - coalesce(sum(m.qty) FILTER (WHERE m.kind = 'return'), 0))::int AS sold,
          round(sum(m.qty * m.unit_cost) FILTER (WHERE m.kind IN ('transfer', 'purchase'))
                / nullif(sum(m.qty) FILTER (WHERE m.kind IN ('transfer', 'purchase')), 0), 2) AS avg_cost
     FROM sales_products p LEFT JOIN sales_moves m ON m.product_id = p.id
     LEFT JOIN orders o ON o.id = p.order_id LEFT JOIN sales_suppliers sp ON sp.id = p.supplier_id`;
-const STOCK_GROUP = 'GROUP BY p.id, o.partiya_no, sp.name';
+export const STOCK_GROUP = 'GROUP BY p.id, o.partiya_no, sp.name';
 
 salesStockRouter.get('/stock', async (req, res) => {
   const q = z
@@ -92,9 +93,10 @@ salesStockRouter.get('/products/:id/moves', async (req, res) => {
   if (!p) throw notFound('Tovar');
   const moves = (
     await pool.query(
-      `SELECT m.id, m.move_date, m.kind, m.dir, m.qty, m.unit_cost, m.transfer_id, m.doc_id, d.shop_name, sp.name AS supplier_name, d.note,
+      `SELECT m.id, m.move_date, m.kind, m.dir, m.qty, m.unit_cost, m.transfer_id, m.doc_id, m.invoice_id, m.price, d.shop_name, sp.name AS supplier_name, cl.name AS client_name, coalesce(d.note, iv.note) AS note,
               sum(m.dir * m.qty) OVER (ORDER BY m.move_date, m.id)::int AS balance, u.full_name AS created_by_name
          FROM sales_moves m LEFT JOIN sales_docs d ON d.id = m.doc_id LEFT JOIN sales_suppliers sp ON sp.id = d.supplier_id
+         LEFT JOIN sales_invoices iv ON iv.id = m.invoice_id LEFT JOIN sales_clients cl ON cl.id = iv.client_id
          LEFT JOIN users u ON u.id = m.created_by
         WHERE m.product_id = $1 ORDER BY m.move_date DESC, m.id DESC`,
       [id],
@@ -123,6 +125,7 @@ const productBody = z.object({
   size_name: optText(50),
   barcode,
   supplier_id: idParam.nullish(),
+  wholesale_price: z.coerce.number().finite().min(0).max(1e12).nullish(), // ulgurji narx (nakladnoyda taklif qilinadi)
 });
 
 salesStockRouter.post('/products', requireAction('sales.stock'), async (req, res) => {
@@ -132,9 +135,9 @@ salesStockRouter.post('/products', requireAction('sales.stock'), async (req, res
     await checkBarcode(db, b.barcode, null);
     const p = (
       await db.query(
-        `INSERT INTO sales_products (source, name, artikul, color_name, size_name, barcode, supplier_id)
-         VALUES ('other', $1, $2, $3, $4, $5, $6) RETURNING *`,
-        [b.name, b.artikul, b.color_name, b.size_name, b.barcode, b.supplier_id ?? null],
+        `INSERT INTO sales_products (source, name, artikul, color_name, size_name, barcode, supplier_id, wholesale_price)
+         VALUES ('other', $1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [b.name, b.artikul, b.color_name, b.size_name, b.barcode, b.supplier_id ?? null, b.wholesale_price ?? null],
       )
     ).rows[0];
     await audit(db, ctx, 'sales_product', p.id, 'create', undefined, p);
@@ -151,15 +154,15 @@ salesStockRouter.put('/products/:id', requireAction('sales.stock'), async (req, 
     const old = (await db.query('SELECT * FROM sales_products WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!old) throw notFound('Tovar');
     if (old.source === 'own' && (b.name !== undefined || b.artikul !== undefined || b.color_name !== undefined || b.size_name !== undefined || b.supplier_id !== undefined)) {
-      throw badRequest('O\'zimiz ishlab chiqargan tovarda faqat barcode va faollikni o\'zgartirish mumkin — nomi zakazdan olinadi');
+      throw badRequest('O\'zimiz ishlab chiqargan tovarda faqat barcode, ulgurji narx va faollikni o\'zgartirish mumkin — nomi zakazdan olinadi');
     }
     if (b.barcode !== undefined) await checkBarcode(db, b.barcode, id);
     const next = { ...old, ...Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) };
     const p = (
       await db.query(
-        `UPDATE sales_products SET name = $2, artikul = $3, color_name = $4, size_name = $5, barcode = $6, supplier_id = $7, is_active = $8
-          WHERE id = $1 RETURNING *`,
-        [id, next.name, next.artikul, next.color_name, next.size_name, next.barcode, next.supplier_id ?? null, next.is_active],
+        `UPDATE sales_products SET name = $2, artikul = $3, color_name = $4, size_name = $5, barcode = $6, supplier_id = $7, is_active = $8,
+                wholesale_price = $9 WHERE id = $1 RETURNING *`,
+        [id, next.name, next.artikul, next.color_name, next.size_name, next.barcode, next.supplier_id ?? null, next.is_active, next.wholesale_price ?? null],
       )
     ).rows[0];
     await audit(db, ctx, 'sales_product', id, 'update', old, p);

@@ -259,6 +259,7 @@ cashRouter.delete('/entries/:id', requireAction('cash.write'), async (req, res) 
     if (e.source === 'hr_payment') throw conflict('Bu yozuv HR to\'lovidan — HR «Bonus va to\'lovlar» sahifasida o\'chiring');
     if (e.source === 'sales_payment') throw conflict('Bu yozuv Sotuv bo\'limi to\'lovidan — «Ishlab chiqarish bilan hisob» sahifasida o\'chiring');
     if (e.source === 'sales_supplier_payment') throw conflict('Bu yozuv postavshikka to\'lovdan — Sotuv bo\'limi «Postavshiklar» sahifasida o\'chiring');
+    if (e.source === 'sales_client_payment') throw conflict('Bu yozuv mijoz to\'lovidan — Sotuv bo\'limi «Mijozlar» sahifasida o\'chiring');
     const rows = (await db.query('DELETE FROM cash_entries WHERE id = $1 OR (pair_id IS NOT NULL AND pair_id = $2) RETURNING *', [id, e.pair_id])).rows;
     await audit(db, ctx, 'cash_entry', id, 'delete', rows, undefined);
     return rows.length;

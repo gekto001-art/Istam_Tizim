@@ -23,6 +23,7 @@ import { BillzSalesPage, BillzSettingsPage, BillzStockPage } from './pages/Billz
 import { AbcPage } from './pages/Reports';
 import { SalesLedgerPage, SalesPrixodPage, TransferPage } from './pages/Sales';
 import { SalesBillzPage, SalesDocsPage, SalesStockPage, SalesSuppliersPage } from './pages/SalesStock';
+import { AgentsPage, ClientsPage, InvoicePrintPage, WholesaleInvoicePage } from './pages/Wholesale';
 import { HrEmployeePage, HrEmployeesPage } from './pages/Hr';
 import { CashAvansPage, CashInputPage, CashJournalPage, CashReportPage, CashSettingsPage } from './pages/Cash';
 import { ImportPage } from './pages/Import';
@@ -110,6 +111,14 @@ const NAV: { biz: string | null; numbered: boolean; groups: NavGroup[] }[] = [
           { to: '/sotuv/sklad', label: 'Qoldiq', show: (r) => can.salesRead(r) },
           { to: '/sotuv/hujjatlar', label: 'Prixod, jo\'natish, inventarizatsiya', show: (r) => can.salesRead(r) },
           { to: '/sotuv/postavshiklar', label: 'Postavshiklar', show: (r) => can.salesRead(r) },
+        ],
+      ],
+      [
+        'Ulgurji (agentlar)',
+        [
+          { to: '/sotuv/nakladnoy', label: 'Nakladnoy (sotuv, vozvrat)', show: (r) => can.salesRead(r) },
+          { to: '/sotuv/mijozlar', label: 'Mijozlar (nasiya)', show: (r) => can.salesRead(r) },
+          { to: '/sotuv/agentlar', label: 'Agentlar va hisobot', show: (r) => can.salesRead(r) },
         ],
       ],
       [
@@ -301,6 +310,10 @@ export function App() {
         {can.salesRead(me.role) && <Route path="/sotuv/hujjatlar" element={<SalesDocsPage />} />}
         {can.salesRead(me.role) && <Route path="/sotuv/postavshiklar" element={<SalesSuppliersPage />} />}
         {can.salesRead(me.role) && <Route path="/sotuv/billz" element={<SalesBillzPage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuv/nakladnoy" element={<WholesaleInvoicePage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuv/nakladnoy/:id" element={<InvoicePrintPage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuv/mijozlar" element={<ClientsPage />} />}
+        {can.salesRead(me.role) && <Route path="/sotuv/agentlar" element={<AgentsPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/qoldiq" element={<BillzStockPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sotuv" element={<BillzSalesPage />} />}
         {can.billzRead(me.role) && <Route path="/billz/sozlamalar" element={<BillzSettingsPage />} />}

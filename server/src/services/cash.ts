@@ -2,7 +2,7 @@ import type { Db } from '../db/pool.js';
 import { badRequest, notFound } from '../lib/errors.js';
 
 /** HR va Sotuv to'lovlarini kassaga yozish (so'mda). Manba (source, source_id) bilan bog'lanadi. */
-export type CashSource = 'hr_payment' | 'sales_payment' | 'sales_supplier_payment';
+export type CashSource = 'hr_payment' | 'sales_payment' | 'sales_supplier_payment' | 'sales_client_payment';
 
 async function walletOf(db: Db, id: number) {
   const w = (await db.query('SELECT * FROM cash_wallets WHERE id = $1', [id])).rows[0];
@@ -72,6 +72,19 @@ export async function postSupplierPayment(
   const op = await idOf(db, 'SELECT id FROM cash_op_types WHERE name = $1', 'Tovar xaridi', 'Tranzaksiya turi');
   const note = ['Sotuv bo\'limi: postavshikka to\'lov', p.note].filter(Boolean).join(' · ');
   await db.query(INSERT, [p.pay_date, p.wallet_id, op, null, null, p.supplier, 'TB', note, 0, p.amount, null, null, 'sales_supplier_payment', p.id, userId]);
+}
+
+/** Mijozdan to'lov (ulgurji, nasiya) → kassada kirim: «Sotuvdan tushum», kontragent — mijoz */
+export async function postClientPayment(
+  db: Db,
+  p: { id: number; pay_date: string; wallet_id: number; amount: number | string; note: string | null; client: string; agent: string | null },
+  userId: number,
+) {
+  await walletOf(db, p.wallet_id);
+  const op = await idOf(db, 'SELECT id FROM cash_op_types WHERE name = $1', 'Sotuvdan tushum', 'Tranzaksiya turi');
+  const center = (await db.query('SELECT id FROM cash_centers WHERE name = $1', ['Asosiy faoliyatdan daromad'])).rows[0]?.id ?? null;
+  const note = ['Ulgurji: mijoz to\'lovi', p.agent && `agent ${p.agent}`, p.note].filter(Boolean).join(' · ');
+  await db.query(INSERT, [p.pay_date, p.wallet_id, op, center, null, p.client, 'TB', note, p.amount, 0, null, null, 'sales_client_payment', p.id, userId]);
 }
 
 export async function deleteCashBySource(db: Db, source: CashSource, id: number) {

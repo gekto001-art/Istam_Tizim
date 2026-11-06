@@ -28,22 +28,24 @@ const KIND: Record<SalesMoveKind, string> = {
   shop: 'Do\'konga jo\'natish',
   shop_return: 'Do\'kondan qaytish',
   adjust: 'Inventarizatsiya',
+  sale: 'Ulgurji sotuv',
+  return: 'Mijozdan vozvrat',
 };
 const METHOD: Record<PayMethod, string> = { naqd: 'Naqd', plastik: 'Plastik', bank: 'Bank (o\'tkazma)' };
-const label = (p: Pick<SalesProduct, 'partiya_no' | 'name' | 'artikul' | 'color_name' | 'size_name' | 'sort'>) =>
+export const label = (p: Pick<SalesProduct, 'partiya_no' | 'name' | 'artikul' | 'color_name' | 'size_name' | 'sort'>) =>
   [p.partiya_no && `P-${p.partiya_no}`, p.name, p.artikul, p.color_name, p.size_name, p.sort && `${p.sort} sort`].filter(Boolean).join(' · ');
 
-function useSalesInvalidate() {
+export function useSalesInvalidate() {
   const qc = useQueryClient();
   return () => {
     qc.invalidateQueries({ queryKey: ['sales'] });
     qc.invalidateQueries({ queryKey: ['stock', 'sales'] });
   };
 }
-const useStock = (qs = 'only=all') => useQuery({ queryKey: ['sales', 'stock', qs], queryFn: () => api<SalesStock>(`/sales/sklad/stock?${qs}`) });
+export const useStock = (qs = 'only=all') => useQuery({ queryKey: ['sales', 'stock', qs], queryFn: () => api<SalesStock>(`/sales/sklad/stock?${qs}`) });
 const useSuppliers = () => useQuery({ queryKey: ['sales', 'suppliers'], queryFn: () => api<SalesSupplier[]>('/sales/sklad/suppliers') });
 
-function SourcePill({ source }: { source: 'own' | 'other' }) {
+export function SourcePill({ source }: { source: 'own' | 'other' }) {
   return source === 'own' ? <span className="pill good">o'zimiz</span> : <span className="pill muted">postavshik</span>;
 }
 
@@ -63,7 +65,7 @@ function Moves({ id }: { id: number }) {
             <th className="n">Kirim</th>
             <th className="n">Chiqim</th>
             <th className="n">Qoldiq</th>
-            <th className="n">Narx</th>
+            <th className="n">Tannarx</th>
             <th>Izoh</th>
             <th>Kim</th>
           </tr>
@@ -73,7 +75,13 @@ function Moves({ id }: { id: number }) {
             <tr key={m.id}>
               <td className="mono">{fmtDate(m.move_date)}</td>
               <td>{KIND[m.kind]}</td>
-              <td>{m.transfer_id ? `O'tkazma №${m.transfer_id}` : m.supplier_name ?? m.shop_name ?? (m.doc_id ? `Hujjat №${m.doc_id}` : '')}</td>
+              <td>
+                {m.transfer_id
+                  ? `O'tkazma №${m.transfer_id}`
+                  : m.invoice_id
+                    ? `${m.client_name ?? ''} · nakladnoy №${m.invoice_id}${m.price != null ? ` · ${money(m.price)} so'm` : ''}`
+                    : m.supplier_name ?? m.shop_name ?? (m.doc_id ? `Hujjat №${m.doc_id}` : '')}
+              </td>
               <td className="n">{m.dir === 1 ? fmtNum(m.qty) : ''}</td>
               <td className="n">{m.dir === -1 ? fmtNum(m.qty) : ''}</td>
               <td className="n">{fmtNum(m.balance)}</td>
@@ -100,11 +108,13 @@ function ProductModal({ p, onClose }: { p: SalesProduct | null; onClose: () => v
     size_name: p?.size_name ?? '',
     barcode: p?.barcode ?? '',
     supplier_id: p?.supplier_id ? String(p.supplier_id) : '',
+    wholesale_price: p?.wholesale_price ? String(Number(p.wholesale_price)) : '',
     is_active: p?.is_active ?? true,
   });
+  const badPrice = f.wholesale_price.trim() !== '' && !(num(f.wholesale_price) >= 0);
   const save = useMutation({
     mutationFn: () => {
-      const base = { barcode: f.barcode, is_active: f.is_active };
+      const base = { barcode: f.barcode, is_active: f.is_active, wholesale_price: f.wholesale_price.trim() ? num(f.wholesale_price) : null };
       const full = { ...base, name: f.name, artikul: f.artikul, color_name: f.color_name, size_name: f.size_name, supplier_id: f.supplier_id ? Number(f.supplier_id) : null };
       return p ? api(`/sales/sklad/products/${p.id}`, { method: 'PUT', body: own ? base : full }) : api('/sales/sklad/products', { method: 'POST', body: full });
     },
@@ -146,6 +156,9 @@ function ProductModal({ p, onClose }: { p: SalesProduct | null; onClose: () => v
         <Field label="Barcode (Billz bilan solishtirish uchun)">
           <input className="mono" value={f.barcode} maxLength={64} onChange={(e) => setF({ ...f, barcode: e.target.value })} />
         </Field>
+        <Field label="Ulgurji narx, so'm (nakladnoyda taklif qilinadi)">
+          <input className="num" inputMode="decimal" value={f.wholesale_price} onChange={(e) => setF({ ...f, wholesale_price: e.target.value })} />
+        </Field>
         {p && (
           <label className="row">
             <input type="checkbox" checked={f.is_active} onChange={(e) => setF({ ...f, is_active: e.target.checked })} /> Faol (yangi hujjatlarda tanlanadi)
@@ -157,7 +170,7 @@ function ProductModal({ p, onClose }: { p: SalesProduct | null; onClose: () => v
         <button className="btn ghost" onClick={onClose}>
           Bekor
         </button>
-        <button className="btn" disabled={save.isPending || (!own && !f.name.trim())} onClick={() => save.mutate()}>
+        <button className="btn" disabled={save.isPending || badPrice || (!own && !f.name.trim())} onClick={() => save.mutate()}>
           Saqlash
         </button>
       </div>
@@ -234,7 +247,9 @@ export function SalesStockPage() {
                   <th>Barcode</th>
                   <th className="n">Qoldiq</th>
                   <th className="n">Do'konlarga</th>
-                  <th className="n">O'rtacha narx</th>
+                  <th className="n">Ulgurji sotilgan</th>
+                  <th className="n">O'rtacha tannarx</th>
+                  <th className="n">Ulgurji narx</th>
                   <th className="n">Summa</th>
                   {write && <th />}
                 </tr>
@@ -260,7 +275,9 @@ export function SalesStockPage() {
                         <b>{fmtNum(r.qty)}</b>
                       </td>
                       <td className="n">{r.to_shops ? fmtNum(r.to_shops) : ''}</td>
+                      <td className="n">{r.sold ? fmtNum(r.sold) : ''}</td>
                       <td className="n">{money(r.avg_cost)}</td>
+                      <td className="n">{r.wholesale_price ? money(r.wholesale_price) : ''}</td>
                       <td className="n">{money(r.value)}</td>
                       {write && (
                         <td>
@@ -278,7 +295,7 @@ export function SalesStockPage() {
                     </tr>
                     {open === r.id && (
                       <tr>
-                        <td colSpan={write ? 13 : 12}>
+                        <td colSpan={write ? 15 : 14}>
                           <Moves id={r.id} />
                         </td>
                       </tr>

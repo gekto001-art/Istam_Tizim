@@ -21,7 +21,7 @@ const MODULES: { biz: (typeof BIZ)[number]; name: string; what: string; stage: S
   { biz: 'Sotuv bo\'limi', name: 'Ishlab chiqarishdan prixod', what: 'O\'tkazmani qabul qilish / rad etish, ishlab chiqarishdan qarz va to\'lovlar (akt sverka)', stage: 'ready' },
   { biz: 'Sotuv bo\'limi', name: 'Do\'konlar (Billz)', what: 'Billz\'dan qoldiq va sotuvlar har 5 daqiqada', stage: 'ready' },
   { biz: 'Sotuv bo\'limi', name: 'Sotuv bo\'limi skladi', what: 'Ishlab chiqarishdan va postavshiklardan kirim, do\'konga jo\'natish, inventarizatsiya, postavshik qarzi, Billz bilan solishtirish', stage: 'ready' },
-  { biz: 'Sotuv bo\'limi', name: 'Agentlar va ulgurji', what: 'Agentlar (Abu Saxiy, Safo, G\'ulom), mijozlar, nakladnoy, nasiya, vozvrat', stage: 'next' },
+  { biz: 'Sotuv bo\'limi', name: 'Agentlar va ulgurji', what: 'Agentlar (Abu Saxiy, Safo, G\'ulom), mijozlar, nakladnoy (chop etish), nasiya va muddat, vozvrat, to\'lov (kassaga), komissiya hisoboti', stage: 'ready' },
   { biz: 'Umumiy', name: 'Asos', what: 'Kirish, rollar, foydalanuvchilar, audit, zaxira nusxa', stage: 'ready' },
   { biz: 'Umumiy', name: 'Hisobotlar', what: 'ABC tahlil (marja, sotuv soni, summa) — tayyor; P&L har biznes uchun alohida, Balans, Cash Flow (avto)', stage: 'next' },
   { biz: 'Umumiy', name: 'Kassa', what: 'Hamyonlar (ko\'p valyutali), kirim / chiqim, ichki transfer, ayriboshlash, avans-hisobot, kassa hisobot', stage: 'ready' },

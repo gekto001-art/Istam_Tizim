@@ -233,3 +233,87 @@ describe('Sotuv bo\'limi skladi: prixod, do\'kon, inventarizatsiya, postavshikla
     expect((await api().get('/api/sales/sklad/stock').set(auth(t.hr))).status).toBe(403);
   });
 });
+
+describe('Agentlar va ulgurji: nakladnoy, vozvrat, nasiya, to\'lov, hisobot', () => {
+  it('sotuv → vozvrat → to\'lov (kassaga) → qarz, muddati o\'tgan, akt sverka, agent hisoboti', async () => {
+    const { order, cell } = await readyGoods();
+    await api().put(`/api/orders/${order.id}/sale-price`).set(auth(t.innovatsiya)).send({ sale_price1: 30000, sale_price2: 15000 });
+    const tr = await api().post('/api/sales/transfers').set(auth(t.sklad)).send({ doc_date: '2026-01-02', rows: [{ order_id: order.id, ...cell, sort: 1, qty: 50 }] });
+    await api().post(`/api/sales/transfers/${tr.body.id}/decide`).set(auth(t.sotuv)).send({ decision: 'accepted', decided_date: '2026-01-03' });
+    const stockRow = async () =>
+      ((await api().get(`/api/sales/sklad/stock?only=all&q=${order.partiya_no}`).set(auth(t.sotuv))).body.rows as { id: number; qty: number; sold: number; wholesale_price: string | null }[])[0];
+    const prod = await stockRow();
+    expect((await api().put(`/api/sales/sklad/products/${prod.id}`).set(auth(t.sotuv)).send({ wholesale_price: 45000 })).body.wholesale_price).toBe('45000.00');
+
+    const W = '/api/sales/ulgurji';
+    const agents = (await api().get(`${W}/agents`).set(auth(t.sotuv))).body.map((a: { name: string }) => a.name);
+    expect(agents).toEqual(expect.arrayContaining(['Abu Saxiy', 'Safo', 'G\'ulom']));
+    const agent = (await api().post(`${W}/agents`).set(auth(t.sotuv)).send({ name: uniq('Agent '), commission_pct: 2 })).body;
+    const clientName = uniq('Mijoz ');
+    expect((await api().post(`${W}/clients`).set(auth(t.buxgalter)).send({ name: clientName })).status).toBe(403);
+    const client = (await api().post(`${W}/clients`).set(auth(t.sotuv)).send({ name: clientName, agent_id: agent.id, credit_limit: 2000000, phone: '+998901112233' })).body;
+    expect((await api().post(`${W}/clients`).set(auth(t.sotuv)).send({ name: clientName.toUpperCase() })).status).toBe(409);
+
+    const inv = (body: object) => api().post(`${W}/invoices`).set(auth(t.sotuv)).send({ client_id: client.id, ...body });
+    const row = (qty: number, price = 45000) => [{ product_id: prod.id, qty, price }];
+    expect((await inv({ kind: 'sale', doc_date: '2026-01-10', rows: row(51) })).body.message).toContain('skladda 50');
+    expect((await inv({ kind: 'sale', doc_date: '2026-01-10', rows: row(50) })).body.message).toContain('nasiya chegarasi');
+    expect((await inv({ kind: 'sale', doc_date: '2026-01-10', due_date: '2026-01-01', rows: row(40) })).status).toBe(400);
+    const s1 = await inv({ kind: 'sale', doc_date: '2026-01-10', due_date: '2026-02-10', rows: row(40) });
+    expect(s1.status).toBe(201);
+    expect(s1.body).toMatchObject({ qty: 40, amount_uzs: '1800000.00', cost_uzs: '1200000.00', agent_name: agent.name, client_name: clientName });
+    expect(await stockRow()).toMatchObject({ qty: 10, sold: 40 });
+    expect((await inv({ kind: 'sale', doc_date: '2027-06-02', rows: row(5) })).body.message).toContain('nasiya chegarasi');
+    expect((await inv({ kind: 'sale', doc_date: '2027-06-02', rows: row(4) })).status).toBe(201);
+    // vozvrat: mijoz olganidan ko'p emas
+    expect((await inv({ kind: 'return', doc_date: '2027-06-05', rows: row(45) })).body.message).toContain('44 dona olgan');
+    const r1 = await inv({ kind: 'return', doc_date: '2027-06-05', rows: row(4) });
+    expect(r1.body).toMatchObject({ kind: 'return', amount_uzs: '180000.00' });
+    expect(await stockRow()).toMatchObject({ qty: 10, sold: 40 });
+
+    // to'lov: buxgalter; hamyon tanlansa kassaga «Sotuvdan tushum»
+    const wallet = (await api().post('/api/cash/wallets').set(auth(t.buxgalter)).send({ name: uniq('Agent kassa '), business: 'tijorat', kind: 'naqd' })).body.id;
+    const pay = (body: object, token = t.buxgalter) => api().post(`${W}/client-payments`).set(auth(token)).send({ client_id: client.id, method: 'naqd', ...body });
+    expect((await pay({ pay_date: '2027-06-06', amount_uzs: 1 }, t.sotuv)).status).toBe(403);
+    const p1 = await pay({ pay_date: '2027-06-06', amount_uzs: 500000, wallet_id: wallet });
+    expect(p1.body.agent_id).toBe(agent.id);
+    const ce = (await api().get(`/api/cash/entries?wallet_id=${wallet}`).set(auth(t.buxgalter))).body;
+    expect(ce[0]).toMatchObject({ op_name: 'Sotuvdan tushum', counterparty: clientName, amount_in: '500000.00', source: 'sales_client_payment' });
+    expect((await api().delete(`/api/cash/entries/${ce[0].id}`).set(auth(t.buxgalter))).body.message).toContain('Mijozlar');
+
+    // nasiya: qarz va muddati o'tgani (birinchi nakladnoy muddati o'tgan)
+    const cl = (await api().get(`${W}/clients?q=${encodeURIComponent(clientName)}`).set(auth(t.sotuv))).body[0];
+    expect(cl).toMatchObject({ sold: '1980000.00', returned: '180000.00', paid: '500000.00', debt: '1300000.00', overdue: '1120000.00', agent_name: agent.name });
+    const led = (await api().get(`${W}/clients/${client.id}/ledger?from=2027-01-01`).set(auth(t.sotuv))).body;
+    expect(led.opening).toBe('1800000.00');
+    expect(led.rows.map((r: { kind: string; balance: string }) => [r.kind, r.balance])).toEqual([
+      ['sale', '1980000.00'],
+      ['return', '1800000.00'],
+      ['payment', '1300000.00'],
+    ]);
+    expect((await api().get(`${W}/invoices/${s1.body.id}`).set(auth(t.sotuv))).body).toMatchObject({ client_debt: '1300000.00', client_phone: '+998901112233' });
+
+    // agent hisoboti: sof sotuv, tannarx, foyda, yig'ilgan pul, komissiya
+    const rep = (await api().get(`${W}/report?from=2026-01-01`).set(auth(t.sotuv))).body;
+    expect(rep.agents.find((a: { id: number }) => a.id === agent.id)).toMatchObject({
+      sold_qty: 44,
+      returned_qty: 4,
+      net_sales: '1800000.00',
+      margin: '600000.00',
+      paid: '500000.00',
+      commission: '36000.00',
+    });
+    expect(rep.clients.find((c: { id: number }) => c.id === client.id)).toMatchObject({ net_sales: '1800000.00', agent_name: agent.name });
+
+    const moves = (await api().get(`/api/sales/sklad/products/${prod.id}/moves`).set(auth(t.sotuv))).body.moves;
+    expect(moves[0]).toMatchObject({ kind: 'return', client_name: clientName, price: '45000.00' });
+
+    // vozvratni o'chirish — tovar skladdan chiqadi; to'lovni o'chirish — kassadan ham
+    expect((await api().delete(`${W}/invoices/${r1.body.id}`).set(auth(t.sotuv))).status).toBe(204);
+    expect((await stockRow()).qty).toBe(6);
+    expect((await api().delete(`${W}/client-payments/${p1.body.id}`).set(auth(t.buxgalter))).status).toBe(204);
+    expect((await api().get(`/api/cash/entries?wallet_id=${wallet}`).set(auth(t.buxgalter))).body).toHaveLength(0);
+
+    expect((await api().get(`${W}/clients`).set(auth(t.hr))).status).toBe(403);
+  });
+});

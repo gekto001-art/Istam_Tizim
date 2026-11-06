@@ -7,6 +7,7 @@ import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { idParam, optText } from '../lib/util.js';
 import { deleteCashBySource, postSalesPayment } from '../services/cash.js';
 import { receiveTransfer, salesStockRouter } from './salesStock.js';
+import { wholesaleRouter } from './salesWholesale.js';
 
 /**
  * Sotuv bo'limi — alohida biznes. 1-qism: ishlab chiqarishdan prixod va hisob-kitob.
@@ -19,6 +20,7 @@ import { receiveTransfer, salesStockRouter } from './salesStock.js';
 export const salesRouter = Router();
 salesRouter.use(requireAction('sales.read'));
 salesRouter.use('/sklad', salesStockRouter); // Sotuv bo'limi skladi, postavshiklar, Billz bilan solishtirish
+salesRouter.use('/ulgurji', wholesaleRouter); // agentlar, mijozlar, nakladnoy, nasiya
 
 const date = z.coerce.date().transform((d) => d.toISOString().slice(0, 10));
 const LOCK = 'SELECT pg_advisory_xact_lock(740111)'; // tayyor mahsulot skladidan chiqim ketma-ket

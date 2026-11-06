@@ -68,6 +68,7 @@ export const can = {
   salesAccept: has(['admin', 'sotuv']),
   salesPay: has(['admin', 'buxgalter', 'kassir']),
   salesStock: has(['admin', 'sotuv']),
+  salesWholesale: has(['admin', 'sotuv']),
   hrRead: has(['admin', 'rahbar', 'hr', 'buxgalter', 'kassir']),
   hrWrite: has(['admin', 'hr']),
   hrWork: has(['admin', 'hr', 'tsex']),
@@ -777,7 +778,7 @@ export interface SalesLedger {
 
 // ---------- Sotuv bo'limi skladi ----------
 export type SalesDocKind = 'purchase' | 'shop' | 'shop_return' | 'adjust';
-export type SalesMoveKind = 'transfer' | SalesDocKind;
+export type SalesMoveKind = 'transfer' | SalesDocKind | 'sale' | 'return';
 export interface SalesProduct {
   id: number;
   source: 'own' | 'other';
@@ -792,9 +793,11 @@ export interface SalesProduct {
   supplier_id: number | null;
   supplier_name: string | null;
   is_active: boolean;
+  wholesale_price: string | null;
   qty: number;
   received: number;
   to_shops: number;
+  sold: number;
   avg_cost: string | null;
   value: string;
 }
@@ -811,8 +814,11 @@ export interface SalesMove {
   unit_cost: string;
   transfer_id: number | null;
   doc_id: number | null;
+  invoice_id: number | null;
+  price: string | null;
   shop_name: string | null;
   supplier_name: string | null;
+  client_name: string | null;
   note: string | null;
   balance: number;
   created_by_name: string | null;
@@ -876,6 +882,74 @@ export interface SalesBillzCompare {
   sales_start: string | null;
   synced_at: string | null;
   no_barcode: number;
+}
+
+// ---------- Agentlar va ulgurji ----------
+export interface SalesAgent { id: number; name: string; phone: string | null; commission_pct: string; note: string | null; is_active: boolean; clients: number }
+export interface SalesClient {
+  id: number;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  agent_id: number | null;
+  agent_name: string | null;
+  credit_limit: string | null;
+  note: string | null;
+  is_active: boolean;
+  sold: string;
+  returned: string;
+  paid: string;
+  debt: string;
+  overdue: string;
+  last_sale: string | null;
+  last_payment: string | null;
+}
+export type InvoiceKind = 'sale' | 'return';
+export interface SalesInvoiceItem {
+  product_id: number;
+  source: 'own' | 'other';
+  partiya_no: string | null;
+  name: string;
+  artikul: string | null;
+  color_name: string | null;
+  size_name: string | null;
+  sort: 1 | 2 | null;
+  barcode: string | null;
+  qty: number;
+  price: string;
+  unit_cost: string;
+}
+export interface SalesInvoice {
+  id: number;
+  kind: InvoiceKind;
+  doc_date: string;
+  due_date: string | null;
+  client_id: number;
+  client_name: string;
+  client_phone: string | null;
+  client_address: string | null;
+  agent_id: number | null;
+  agent_name: string | null;
+  note: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  qty: number;
+  amount_uzs: string;
+  cost_uzs: string;
+  items: SalesInvoiceItem[];
+  client_debt?: string;
+}
+export interface SalesClientLedger {
+  client: SalesClient;
+  opening: string;
+  rows: { date: string; kind: InvoiceKind | 'payment'; ref_id: number; note: string | null; due_date: string | null; debit: string; credit: string; qty: number | null; balance: string }[];
+  totals: { debit: string; credit: string; closing: string };
+}
+interface WholesaleSums { sold_qty: number; returned_qty: number; sales: string; returns: string; cost: string; net_sales: string; margin: string; paid: string }
+export interface WholesaleReport {
+  agents: (WholesaleSums & { id: number | null; name: string; commission_pct: string | null; commission: string })[];
+  clients: (WholesaleSums & { id: number; name: string; agent_name: string | null })[];
+  totals: { sales: string; returns: string; net_sales: string; cost: string; margin: string; paid: string; commission: string };
 }
 
 // ---------- HR ----------
@@ -1004,7 +1078,7 @@ export interface CashEntry {
   partiya_no: string | null;
   pair_id: number | null;
   pair_wallet: string | null;
-  source: 'hr_payment' | 'sales_payment' | 'sales_supplier_payment' | null;
+  source: 'hr_payment' | 'sales_payment' | 'sales_supplier_payment' | 'sales_client_payment' | null;
   created_by_name: string | null;
 }
 export interface CashBalance { wallet_id: number; wallet_name: string; kind: string; business: string; currency: CashCurrency; balance: string }

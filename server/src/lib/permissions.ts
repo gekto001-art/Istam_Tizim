@@ -56,6 +56,7 @@ export type Action =
   | 'sales.accept' // o'tkazmani qabul qilish / rad etish (Sotuv bo'limi)
   | 'sales.pay' // Sotuv bo'limining ishlab chiqarishga va postavshiklarga to'lovlari
   | 'sales.stock' // Sotuv bo'limi skladi: tovarlar, postavshiklar, prixod, do'konga jo'natish, inventarizatsiya
+  | 'sales.wholesale' // ulgurji: agentlar, mijozlar, nakladnoy (sotuv / vozvrat)
   | 'hr.read' // HR: xodimlar, tabel, ish nazorati, nachisleniya, vedomost
   | 'hr.write' // bo'limlar, xodim qabul / bo'shatish, oylik, tabel, bonus
   | 'hr.work' // ish nazorati (ishbay) kiritish — xodimlar va ish turlarini ko'radi, maoshni emas
@@ -95,6 +96,7 @@ const MATRIX: Record<Action, Role[]> = {
   'sales.accept': ['admin', 'sotuv'],
   'sales.pay': ['admin', 'buxgalter', 'kassir'],
   'sales.stock': ['admin', 'sotuv'],
+  'sales.wholesale': ['admin', 'sotuv'],
   'hr.read': ['admin', 'rahbar', 'hr', 'buxgalter', 'kassir'],
   'hr.write': ['admin', 'hr'],
   'hr.work': ['admin', 'hr', 'tsex'],
