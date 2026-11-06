@@ -53,7 +53,7 @@ ALTER TABLE sales_moves
   ADD COLUMN price      numeric(18,2) CHECK (price >= 0),          -- sotuv / vozvrat narxi (1 dona)
   ADD CONSTRAINT sales_moves_kind_check CHECK (kind IN ('transfer', 'purchase', 'shop', 'shop_return', 'adjust', 'sale', 'return')),
   ADD CONSTRAINT sales_moves_ref_check CHECK (num_nonnulls(transfer_id, doc_id, invoice_id) = 1),
-  ADD CONSTRAINT sales_moves_price_check CHECK ((invoice_id IS NULL) = (price IS NULL));
+  ADD CONSTRAINT sales_moves_invoice_price_check CHECK ((invoice_id IS NULL) = (price IS NULL));
 CREATE INDEX sales_moves_invoice ON sales_moves (invoice_id);
 
 CREATE TABLE sales_client_payments (
