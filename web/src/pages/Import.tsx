@@ -5,7 +5,7 @@ import { ErrorText, Field, PageHead, fmtDateTime, fmtNum, useToast } from '../co
 import { DeptSelect } from './Hr';
 
 /** Google Sheets'dan import: jadvaldan sarlavhasi bilan nusxalab (Ctrl+C) shu yerga joylashtiriladi */
-type Kind = 'employees' | 'salaries' | 'work_types' | 'cash';
+type Kind = 'employees' | 'salaries' | 'work_types' | 'cash' | 'work_logs';
 type Result = {
   saved: boolean;
   rows: number;
@@ -35,6 +35,11 @@ const KINDS: Record<Kind, { label: string; how: string; dept?: 'required' | 'fal
     label: 'Ish turlari va narxlar',
     how: "HR jadvali → «Ish Turi» (yoki «Narxlar») varag'i: Sana, Kategoriyalar, Ishlar nomi, Ish narxi. Narx shu sanadan amal qiladi. Bo'limni tanlang (Ko'ylak yoki Shim).",
     dept: 'required',
+  },
+  work_logs: {
+    label: 'Ish nazorati (ishbay)',
+    how: "HR jadvali → «Ish nazorati baza» varag'i: Sana, Xodim Nomi, Kategoriya, Ish turi, Miqdori, Status (Aktiv / Neytral / Passiv), Bo'lim. Summa narxlar tarixidan hisoblanadi (jadvaldagi Narx / Summa olinmaydi). Bo'lim — «Bo'lim» ustunidagi tsex nomidan yoki tanlanganidan. Yangi ish turi narxsiz yaratiladi. Import partiyasi bilan bekor qilinadi — qayta yuborishdan oldin avvalgisini bekor qiling.",
+    dept: 'fallback',
   },
   cash: {
     label: 'Kassa yozuvlari',
@@ -225,11 +230,11 @@ export function ImportPage() {
                     <td>{b.kind_label}</td>
                     <td>{b.label ?? ''}</td>
                     <td className="n">{fmtNum(b.rows_total)}</td>
-                    <td className="n">{fmtNum(b.kind === 'cash' ? b.cash_rows : b.created)}</td>
+                    <td className="n">{fmtNum(b.kind === 'cash' || b.kind === 'work_logs' ? b.cash_rows : b.created)}</td>
                     <td>{b.created_by_name ?? ''}</td>
                     <td>
-                      {b.kind === 'cash' && (
-                        <button className="btn ghost sm" disabled={undo.isPending} onClick={() => confirm(`Import №${b.id} bekor qilinsinmi? ${b.cash_rows} ta kassa yozuvi o'chadi.`) && undo.mutate(b.id)}>
+                      {(b.kind === 'cash' || b.kind === 'work_logs') && (
+                        <button className="btn ghost sm" disabled={undo.isPending} onClick={() => confirm(`Import №${b.id} bekor qilinsinmi? ${b.cash_rows} ta ${b.kind === 'cash' ? 'kassa' : 'ish nazorati'} yozuvi o'chadi.`) && undo.mutate(b.id)}>
                           Bekor qilish
                         </button>
                       )}

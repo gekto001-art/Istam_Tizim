@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { ErrorText, Field, Modal, PageHead, fmtDate, fmtNum, useToast } from '../components/ui';
-import { can, type AdjKind, type Employee, type HrAdjustment, type HrPayment, type Payroll, type TimesheetMonth, type TimesheetRow, type WorkLog, type WorkPrice, type WorkType } from '../types';
+import { can, type AdjKind, type Employee, type HrAdjustment, type HrPayment, type Payroll, type PayrollRow, type TimesheetMonth, type TimesheetRow, type WorkLog, type WorkPrice, type WorkStatus, type WorkType } from '../types';
 import { WalletSelect, useMeta } from './Cash';
 import { DeptSelect, monthStart, useEmployees, useHrInvalidate } from './Hr';
 import { money, num } from './purchaseUi';
@@ -311,8 +311,10 @@ export function HrTabelPage() {
 }
 
 // ---------- Ish nazorati (ishbay) ----------
-type WRow = { employee_id: string; work_type_id: string; qty: string; note: string };
-const wblank = (): WRow => ({ employee_id: '', work_type_id: '', qty: '', note: '' });
+type WRow = { employee_id: string; work_type_id: string; qty: string; status: WorkStatus; note: string };
+const wblank = (): WRow => ({ employee_id: '', work_type_id: '', qty: '', status: 'aktiv', note: '' });
+/** Xodimning faolligi: ish haqiga ta'sir qilmaydi, bonusni belgilashda hisobga olinadi */
+const STATUS: Record<WorkStatus, [string, string]> = { aktiv: ['Aktiv', 'good'], neytral: ['Neytral', 'warn'], passiv: ['Passiv', 'bad'] };
 
 function WorkTypeSelect({ types, value, onChange, disabled }: { types: WorkType[]; value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const cats = [...new Set(types.map((t) => t.category))];
@@ -374,7 +376,7 @@ export function HrWorkPage() {
     const t = rows.filter(touched);
     if (!t.length) return setMsg('Xodim, ish turi va sonini kiriting');
     if (t.some(bad)) return setMsg('Har qatorda xodim, ish turi va son (butun, 0 dan katta) bo\'lishi kerak');
-    save.mutate({ work_date: date, rows: t.map((r) => ({ employee_id: Number(r.employee_id), work_type_id: Number(r.work_type_id), qty: num(r.qty), note: r.note })) });
+    save.mutate({ work_date: date, rows: t.map((r) => ({ employee_id: Number(r.employee_id), work_type_id: Number(r.work_type_id), qty: num(r.qty), status: r.status, note: r.note })) });
   };
   const dayTotal = (logs.data ?? []).reduce((a, l) => a + Number(l.amount), 0);
   return (
@@ -404,6 +406,7 @@ export function HrWorkPage() {
                   <th className="n">Soni</th>
                   <th className="n">Narxi</th>
                   <th className="n">Summasi</th>
+                  <th>Status</th>
                   <th>Izoh</th>
                   <th />
                 </tr>
@@ -432,6 +435,15 @@ export function HrWorkPage() {
                       </td>
                       <td className="n">{wt ? (Number(wt.price) ? money(wt.price) : <span className="pill warn">narx yo'q</span>) : ''}</td>
                       <td className="n">{amount(r) ? money(amount(r)) : ''}</td>
+                      <td>
+                        <select value={r.status} onChange={(e) => set(i, { status: e.target.value as WorkStatus })} aria-label="Status">
+                          {Object.entries(STATUS).map(([k, [l]]) => (
+                            <option key={k} value={k}>
+                              {l}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td>
                         <input className="cell" value={r.note} onChange={(e) => set(i, { note: e.target.value })} aria-label="Izoh" />
                       </td>
@@ -482,6 +494,7 @@ export function HrWorkPage() {
                   <th className="n">Soni</th>
                   <th className="n">Narxi</th>
                   <th className="n">Summasi</th>
+                  <th>Status</th>
                   <th>Izoh</th>
                   <th>Kiritgan</th>
                   {write && <th />}
@@ -496,6 +509,9 @@ export function HrWorkPage() {
                     <td className="n">{fmtNum(l.qty)}</td>
                     <td className="n">{Number(l.price) ? money(l.price) : <span className="pill warn">narx yo'q</span>}</td>
                     <td className="n">{money(l.amount)}</td>
+                    <td>
+                      <span className={`pill ${STATUS[l.status][1]}`}>{STATUS[l.status][0]}</span>
+                    </td>
                     <td>{l.note ?? ''}</td>
                     <td>{l.created_by_name ?? ''}</td>
                     {write && (
@@ -704,6 +720,22 @@ export function HrWorkTypesPage() {
 }
 
 // ---------- Vedomost ----------
+/** Faollik: ishbay summasining status bo'yicha ulushi (Aktiv / Neytral / Passiv) */
+function Activity({ r }: { r: PayrollRow }) {
+  const parts = (['aktiv', 'neytral', 'passiv'] as const).map((s) => [s, Number(r[`piece_${s}`])] as const).filter(([, v]) => v > 0);
+  const total = parts.reduce((a, [, v]) => a + v, 0);
+  if (!total) return null;
+  return (
+    <>
+      {parts.map(([s, v]) => (
+        <span key={s} className={`pill ${STATUS[s][1]}`} title={`${STATUS[s][0]}: ${money(v)} so'm`} style={{ marginRight: 4 }}>
+          {STATUS[s][0]} {Math.round((v / total) * 100)}%
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function HrPayrollPage() {
   const [dept, setDept] = useState('');
   const [from, setFrom] = useState(monthStart());
@@ -753,6 +785,7 @@ export function HrPayrollPage() {
                   <th>Lavozim</th>
                   <th className="n">Kuni</th>
                   <th className="n">Soati</th>
+                  <th title="Ishbay summasi status bo'yicha — ish haqiga ta'sir qilmaydi, bonusni belgilashda hisobga olinadi">Faollik (bonus uchun)</th>
                   {cols.map(([k, l]) => (
                     <th key={k} className="n">
                       {l}
@@ -765,7 +798,7 @@ export function HrPayrollPage() {
                   <Fragment key={dn}>
                     {depts.length > 1 && (
                       <tr>
-                        <th colSpan={5 + cols.length} scope="rowgroup">
+                        <th colSpan={6 + cols.length} scope="rowgroup">
                           {dn}
                         </th>
                       </tr>
@@ -785,6 +818,9 @@ export function HrPayrollPage() {
                             {r.absent_days ? <span className="note"> / {r.absent_days}K</span> : ''}
                           </td>
                           <td className="n">{Number(r.hours) ? fmtNum(r.hours, 1) : ''}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <Activity r={r} />
+                          </td>
                           {cols.map(([k]) => (
                             <td key={k} className="n">
                               {k === 'closing' || k === 'accrued' ? <b>{money(r[k])}</b> : Number(r[k]) ? money(r[k]) : ''}
@@ -796,7 +832,7 @@ export function HrPayrollPage() {
                 ))}
                 <tr>
                   <td />
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <b>Jami</b>
                   </td>
                   {cols.map(([k]) => (

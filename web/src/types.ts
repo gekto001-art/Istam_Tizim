@@ -1009,14 +1009,16 @@ export interface WorkLog {
   qty: number;
   price: string;
   amount: string;
+  status: WorkStatus;
   partiya_no: string | null;
   note: string | null;
   created_by_name: string | null;
 }
+export type WorkStatus = 'aktiv' | 'neytral' | 'passiv';
 export type AdjKind = 'bonus' | 'penalty' | 'other';
 export interface HrAdjustment { id: number; adj_date: string; employee_id: number; full_name: string; department_name: string; kind: AdjKind; amount: string; note: string | null; created_by_name: string | null }
 export interface HrPayment { id: number; pay_date: string; employee_id: number; full_name: string; department_name: string; method: 'naqd' | 'bank'; amount: string; note: string | null; created_by_name: string | null; wallet_name: string | null }
-type Sums = { salary: string; piece: string; bonus: string; penalty: string; accrued: string; cash: string; bank: string };
+type Sums = { salary: string; piece: string; piece_aktiv: string; piece_neytral: string; piece_passiv: string; bonus: string; penalty: string; accrued: string; cash: string; bank: string };
 export interface PayrollRow extends Sums {
   employee_id: number;
   full_name: string;
